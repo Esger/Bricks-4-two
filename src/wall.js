@@ -1,22 +1,22 @@
 export class Brick {
-    constructor(row, column, height) {
-        this.row = Math.round(row);
-        this.column = Math.round(column);
-        this.width = 60; // Clean grid width
+    constructor(rowCoordinate, columnCoordinate, height) {
+        this.rowCoordinate = Math.round(rowCoordinate);
+        this.columnCoordinate = Math.round(columnCoordinate);
+        this.width = 60; // Clean non-overlapping grid width
         this.height = height;
         this.updateCanvasPosition();
     }
 
     updateCanvasPosition() {
-        const standardWidth = 60;
-        const staggerShiftValue = 30; // 50% aside jump for masonry
+        const standardColumnWidth = 60;
+        const staggeredRowOffset = 30; // 50% aside jump for masonry
 
-        // Stagger logic: Every odd row is offset by 30px
-        const rowParity = Math.abs(this.row) % 2;
-        const horizontalOffset = (rowParity === 1) ? staggerShiftValue : 0;
+        // Every second row is offset by 30px to create the staggered grid
+        const rowRemainder = Math.abs(this.rowCoordinate) % 2;
+        const horizontalShift = (rowRemainder === 1) ? staggeredRowOffset : 0;
 
-        this.canvasXPosition = (this.column * standardWidth) + horizontalOffset;
-        this.canvasYPosition = (this.row * this.height);
+        this.canvasXPosition = (this.columnCoordinate * standardColumnWidth) + horizontalShift;
+        this.canvasYPosition = (this.rowCoordinate * this.height);
     }
 }
 
@@ -27,183 +27,184 @@ export class Wall {
         this.brickHeight = 25;
         this.columnSpacing = 60;
 
-        // Primary State: A Map of logical positions to Brick objects
-        this.activeBricksMap = new Map(); // Key: 'column,row' -> Brick object
+        // Logical state: The collection of bricks currently forming the ribbon
+        this.activeBrickMap = new Map(); // Key: 'column,row' -> Brick object
 
         this.initializeWall();
     }
 
     initializeWall() {
-        this.activeBricksMap.clear();
-        const screenWidth = this.canvas.clientWidth || 800;
-        const firstVisibleCol = Math.floor(-120 / this.columnSpacing);
-        const lastVisibleCol = Math.ceil((screenWidth + 120) / this.columnSpacing);
-        const baselineRow = Math.round((this.canvas.clientHeight / 2) / this.brickHeight);
+        this.activeBrickMap.clear();
 
-        // Build initial flat ribbon
+        const screenWidthForCoverage = this.canvas.clientWidth || 800;
+        const firstVisibleCol = Math.floor(-120 / this.columnSpacing);
+        const lastVisibleCol = Math.ceil((screenWidthForCoverage + 120) / this.columnSpacing);
+        this.baselineMiddleRow = Math.round((this.canvas.clientHeight / 2) / this.brickHeight);
+
+        // Build the initial flat ribbon (exactly one brick per column)
         for (let col = firstVisibleCol; col <= lastVisibleCol; col++) {
-            this.addBrickToMap(baselineRow, col);
+            this.addBrickToMap(this.baselineMiddleRow, col);
         }
     }
 
     addBrickToMap(row, col) {
         const key = `${col},${row}`;
-        if (this.activeBricksMap.has(key)) return;
-        this.activeBricksMap.set(key, new Brick(row, col, this.brickHeight));
+        if (this.activeBrickMap.has(key)) return;
+        this.activeBrickMap.set(key, new Brick(row, col, this.brickHeight));
     }
 
     removeBrickFromMap(row, col) {
-        this.activeBricksMap.delete(`${col},${row}`);
+        this.activeBrickMap.delete(`${col},${row}`);
     }
 
-    getTouchingNeighbors(row, col) {
+    getTouchingNeighborCoords(row, col) {
         const parity = Math.abs(row) % 2;
-        const neighbors = [[row, col - 1], [row, col + 1]]; // Horizontal
+        // In a staggered grid, a brick touches 2 sides and 4 diagonal/top-bottom neighbors
+        const neighborCoords = [[row, col - 1], [row, col + 1]]; // Side neighbors
 
-        // Vertical neighbors in staggered grid
-        if (parity === 0) { // Even touches same and left-shift
-            neighbors.push([row - 1, col], [row - 1, col - 1], [row + 1, col], [row + 1, col - 1]);
-        } else { // Odd touches same and right-shift
-            neighbors.push([row - 1, col], [row - 1, col + 1], [row + 1, col], [row + 1, col + 1]);
+        if (parity === 0) { // Even row touches same and left-shift neighbors
+            neighborCoords.push([row - 1, col], [row - 1, col - 1], [row + 1, col], [row + 1, col - 1]);
+        } else { // Odd row touches same and right-shift neighbors
+            neighborCoords.push([row - 1, col], [row - 1, col + 1], [row + 1, col], [row + 1, col + 1]);
         }
-        return neighbors;
+        return neighborCoords;
     }
 
     // THE TOPOLOGICAL RIBBON ENGINE (Surgical 5-Pass Algorithm)
-    processImpact(hitBrick, ballSide) {
-        const oldRow = hitBrick.row;
-        const colIdx = hitBrick.column;
-        const pushDir = (ballSide === 'top' ? 1 : -1);
-        const targetRowIndex = oldRow + pushDir;
+    processWallImpact(hitBrick, ballSide) {
+        const oldRowIndex = hitBrick.rowCoordinate;
+        const colIndex = hitBrick.columnCoordinate;
+        const pushDirection = (ballSide === 'top' ? 1 : -1);
+        const targetRowIndex = oldRowIndex + pushDirection;
 
-        // --- PASS 1: GROWTH (Support Shell & Mortar) ---
-        // 1. Add the moved brick
-        this.addBrickToMap(targetRowIndex, colIdx);
+        // --- TERRITORY LOGIC ---
+        // Support shell is only added if moving into or touching opponent's space.
+        const isTargetInOpponentTerritory = (ballSide === 'top') ?
+            (targetRowIndex >= this.baselineMiddleRow) :
+            (targetRowIndex <= this.baselineMiddleRow);
 
-        // 2. Add "Two Behind in Mortar Pattern"
-        // These are the bricks in the target row that overlap the old footprint
-        const oldParity = Math.abs(oldRow) % 2;
-        const mortarPartnerCol = (oldParity === 0) ? colIdx - 1 : colIdx + 1;
-        this.addBrickToMap(targetRowIndex, mortarPartnerCol);
+        // --- PASS 1: GROWTH (Surgical Shell) ---
+        // 1. Add the primary moved brick
+        this.addBrickToMap(targetRowIndex, colIndex);
 
-        // 3. Add "Two to the Sides"
-        this.addBrickToMap(targetRowIndex, colIdx - 1);
-        this.addBrickToMap(targetRowIndex, colIdx + 1);
+        if (isTargetInOpponentTerritory) {
+            // 2. Add 'Two Behind in Mortar Pattern' (partners at target level that overlap the old footprint)
+            const targetParity = Math.abs(targetRowIndex) % 2;
+            const mortarPartnerCol = (targetParity === 0) ? colIndex + 1 : colIndex - 1;
+            this.addBrickToMap(targetRowIndex, mortarPartnerCol);
 
-        // 4. "Fill Gaps that arose" (Airtight Stitching)
-        // Ensure connectivity between neighbors in the affected area
-        for (let c = colIdx - 1; c <= colIdx; c++) {
-            this.bridgeVerticalGapBetweenColumns(c, c + 1);
+            // 3. Add 'Two to the Sides' in the ORIGINAL row to ensure horizontal integrity
+            this.addBrickToMap(oldRowIndex, colIndex - 1);
+            this.addBrickToMap(oldRowIndex, colIndex + 1);
         }
+
+        // 4. Fill gaps that arose (Vertical handshakes)
+        this.sealGapsAroundColumn(colIndex);
+        this.sealGapsAroundColumn(colIndex - 1);
+        this.sealGapsAroundColumn(colIndex + 1);
 
         // --- PASS 2: REMOVE HIT BRICK (The surgery) ---
-        this.removeBrickFromMap(oldRow, colIdx);
-
-        // --- PASS 3: Deduplication (Map-based) ---
+        this.removeBrickFromMap(oldRowIndex, colIndex);
 
         // --- PASS 4 & 5: PRUNING & ORPHAN CLEANUP ---
-        this.performRibbonSanitization();
+        this.performRibbonThinning();
     }
 
-    bridgeVerticalGapBetweenColumns(colA, colB) {
-        // Find bricks in each column
-        const bricksA = [...this.activeBricksMap.values()].filter(b => b.column === colA);
-        const bricksB = [...this.activeBricksMap.values()].filter(b => b.column === colB);
-        if (bricksA.length === 0 || bricksB.length === 0) return;
+    sealGapsAroundColumn(col) {
+        // Find bricks in this column and next neighbor to check connectivity
+        const myBricks = [...this.activeBrickMap.values()].filter(b => b.columnCoordinate === col);
+        const neighborBricks = [...this.activeBrickMap.values()].filter(b => b.columnCoordinate === col + 1);
+        if (myBricks.length === 0 || neighborBricks.length === 0) return;
 
-        // Check if any A brick touches any B brick
-        let isConnected = false;
-        for (const a of bricksA) {
-            const neighbors = this.getTouchingNeighbors(a.row, a.column);
-            for (const [nr, nc] of neighbors) {
-                if (this.activeBricksMap.has(`${nc},${nr}`)) isConnected = true;
+        let hasJoint = false;
+        for (const me of myBricks) {
+            const potentialJoints = this.getTouchingNeighborCoords(me.rowCoordinate, me.columnCoordinate);
+            for (const [nr, nc] of potentialJoints) {
+                if (nc === col + 1 && this.activeBrickMap.has(`${nc},${nr}`)) {
+                    hasJoint = true;
+                    break;
+                }
             }
         }
 
-        // If not connected, add bridge bricks in Col A to reach the nearest Col B brick
-        if (!isConnected) {
-            bricksA.sort((x, y) => x.row - y.row);
-            bricksB.sort((x, y) => x.row - y.row);
-            const anchorA = bricksA[0];
-            const anchorB = bricksB[0];
-            const step = (anchorB.row > anchorA.row) ? 1 : -1;
-            let current = anchorA.row;
-            while (Math.abs(current - anchorB.row) > 1) {
-                current += step;
-                this.addBrickToMap(current, colA);
+        if (!hasJoint) {
+            // Build a vertical bridge in this column to reach the neighbor's height
+            const anchorA = myBricks[0];
+            const anchorB = neighborBricks[0];
+            const bridgeStep = (anchorB.rowCoordinate > anchorA.rowCoordinate) ? 1 : -1;
+            let current = anchorA.rowCoordinate;
+            while (Math.abs(current - anchorB.rowCoordinate) > 1) {
+                current += bridgeStep;
+                this.addBrickToMap(current, col);
             }
         }
     }
 
-    performRibbonSanitization() {
-        // --- PASS 4: THICKNESS PRUNING (Strict 1D Limit) ---
-        // For every column, keep only the bricks that connect to neighbors
+    performRibbonThinning() {
+        // --- PASS 4: THICKNESS PRUNING (Strict 1D Linker) ---
+        // For every vertical column, keep only the bricks spanning the required handshakes.
         const columnMap = new Map();
-        for (const brick of this.activeBricksMap.values()) {
-            if (!columnMap.has(brick.column)) columnMap.set(brick.column, []);
-            columnMap.get(brick.column).push(brick);
+        for (const brick of this.activeBrickMap.values()) {
+            if (!columnMap.has(brick.columnCoordinate)) columnMap.set(brick.columnCoordinate, []);
+            columnMap.get(brick.columnCoordinate).push(brick);
         }
 
-        const bricksToKeepKeys = new Set();
+        const keepKeysSet = new Set();
         for (const [col, bricks] of columnMap.entries()) {
-            // Bricks in this column that have neighbors in col-1 or col+1
-            const connectionRows = [];
+            const handshakeRows = [];
             for (const b of bricks) {
-                const neighbors = this.getTouchingNeighbors(b.row, b.column);
-                let touchesNextColumn = false;
-                for (const [nr, nc] of neighbors) {
-                    if (nc !== col && this.activeBricksMap.has(`${nc},${nr}`)) {
-                        touchesNextColumn = true;
+                const neighbours = this.getTouchingNeighborCoords(b.rowCoordinate, b.columnCoordinate);
+                for (const [nr, nc] of neighbours) {
+                    if (nc !== col && this.activeBrickMap.has(`${nc},${nr}`)) {
+                        handshakeRows.push(b.rowCoordinate);
                         break;
                     }
                 }
-                if (touchesNextColumn) connectionRows.push(b.row);
             }
 
-            if (connectionRows.length > 0) {
-                const minR = Math.min(...connectionRows);
-                const maxR = Math.max(...connectionRows);
-                // Keep the vertical segment connecting these points
+            if (handshakeRows.length > 0) {
+                const minR = Math.min(...handshakeRows);
+                const maxR = Math.max(...handshakeRows);
                 for (const b of bricks) {
-                    if (b.row >= minR && b.row <= maxR) bricksToKeepKeys.add(`${col},${b.row}`);
+                    if (b.rowCoordinate >= minR && b.rowCoordinate <= maxR) {
+                        keepKeysSet.add(`${col},${b.rowCoordinate}`);
+                    }
                 }
             } else {
-                // If no connections, it might be a head/tail spine; keep at least one
-                const avgRow = Math.round(bricks.reduce((sum, b) => sum + b.row, 0) / bricks.length);
-                bricksToKeepKeys.add(`${col},${avgRow}`);
+                // Protect lone head/tail bricks
+                keepKeysSet.add(`${col},${bricks[0].rowCoordinate}`);
             }
         }
 
-        // Wipe everything not flagged as essential 1D ribbon
-        for (const key of this.activeBricksMap.keys()) {
-            if (!bricksToKeepKeys.has(key)) this.activeBricksMap.delete(key);
+        for (const key of this.activeBrickMap.keys()) {
+            if (!keepKeysSet.has(key)) this.activeBrickMap.delete(key);
         }
 
         // --- PASS 5: ORPHAN CLEANUP ---
-        const removalCandidates = [];
-        for (const [key, brick] of this.activeBricksMap.entries()) {
-            let n = 0;
-            const pts = this.getTouchingNeighbors(brick.row, brick.column);
-            for (const [r, c] of pts) if (this.activeBricksMap.has(`${c},${r}`)) n++;
+        const toDeleteKeys = [];
+        for (const [key, brick] of this.activeBrickMap.entries()) {
+            let neighborCount = 0;
+            const pts = this.getTouchingNeighborCoords(brick.rowCoordinate, brick.columnCoordinate);
+            for (const [r, c] of pts) if (this.activeBrickMap.has(`${c},${r}`)) neighborCount++;
 
-            // Protected edges
+            // Do not delete bricks at screen edges
             const screenW = this.canvas.clientWidth || 800;
             const leftEdgeIdx = Math.floor(-60 / this.columnSpacing);
             const rightEdgeIdx = Math.ceil((screenW + 60) / this.columnSpacing);
 
-            if (n < 1 && brick.column > leftEdgeIdx && brick.column < rightEdgeIdx) {
-                removalCandidates.push(key);
+            if (neighborCount < 1 && brick.columnCoordinate > leftEdgeIdx && brick.columnCoordinate < rightEdgeIdx) {
+                toDeleteKeys.push(key);
             }
         }
-        for (const k of removalCandidates) this.activeBricksMap.delete(k);
+        for (const k of toDeleteKeys) this.activeBrickMap.delete(k);
     }
 
     update(game) {
-        // Enforce boundary safety
-        const lowestRowOnScreen = Math.floor(game.height / this.brickHeight) - 3;
-        for (const brick of this.activeBricksMap.values()) {
-            if (brick.row < 4) brick.row = 4;
-            if (brick.row > lowestRowOnScreen) brick.row = lowestRowOnScreen;
+        // Safety row bounds
+        const maxVerticalLimit = Math.floor(game.height / this.brickHeight) - 2;
+        for (const brick of this.activeBrickMap.values()) {
+            if (brick.rowCoordinate < 4) brick.rowCoordinate = 4;
+            if (brick.rowCoordinate > maxVerticalLimit) brick.rowCoordinate = maxVerticalLimit;
             brick.updateCanvasPosition();
         }
     }
@@ -213,38 +214,38 @@ export class Wall {
         const contactRadiusX = 30.5 + ball.radius;
         const contactRadiusY = (this.brickHeight / 2) + ball.radius + 2;
 
-        let bestTargetInstance = null;
-        let minimumDxValue = Infinity;
+        let bestHitCandidate = null;
+        let shortestDistX = Infinity;
 
-        for (const brick of this.activeBricksMap.values()) {
+        for (const brick of this.activeBrickMap.values()) {
             const dx = ball.x - brick.canvasXPosition;
             const dy = ball.y - brick.canvasYPosition;
 
             if (Math.abs(dx) < contactRadiusX && Math.abs(dy) < contactRadiusY) {
-                const ballMovingToWall = (ball.side === 'top' && ball.vy > 0) ||
+                const isHeadingTowardsWall = (ball.side === 'top' && ball.vy > 0) ||
                     (ball.side === 'bottom' && ball.vy < 0);
 
-                if (ballMovingToWall || Math.abs(dy) < 10) {
-                    if (Math.abs(dx) < minimumDxValue) {
-                        minimumDxValue = Math.abs(dx);
-                        bestTargetInstance = brick;
+                if (isHeadingTowardsWall || Math.abs(dy) < 10) {
+                    if (Math.abs(dx) < shortestDistX) {
+                        shortestDistX = Math.abs(dx);
+                        bestHitCandidate = brick;
                     }
                 }
             }
         }
 
-        if (bestTargetInstance) {
-            // SURGICAL PROCESS: Applying your 5-Pass Algorithm
-            this.processImpact(bestTargetInstance, ball.side);
+        if (bestHitCandidate) {
+            // APPLYING THE USER'S 5-PASS SURGICAL ALGORITHM
+            this.processWallImpact(bestHitCandidate, ball.side);
 
             // Physics Bounce
-            const target = bestTargetInstance;
-            const relativeOffsetV = ball.y - target.canvasYPosition;
+            const target = bestHitCandidate;
+            const relativeDy = ball.y - target.canvasYPosition;
             ball.vy *= -1;
 
-            // Critical Ejection Clearance (15px)
-            const clearanceDistance = (this.brickHeight / 2) + ball.radius + 15;
-            ball.y = relativeOffsetV > 0 ? target.canvasYPosition + clearanceDistance : target.canvasYPosition - clearanceDistance;
+            // Precise Ejection (15px) prevents clipping
+            const ejectionClearance = (this.brickHeight / 2) + ball.radius + 15;
+            ball.y = relativeDy > 0 ? target.canvasYPosition + ejectionClearance : target.canvasYPosition - ejectionClearance;
 
             return true;
         }
@@ -260,7 +261,7 @@ export class Wall {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.lineWidth = 1;
 
-        for (const brick of this.activeBricksMap.values()) {
+        for (const brick of this.activeBrickMap.values()) {
             const rx = brick.canvasXPosition - brick.width / 2;
             const ry = brick.canvasYPosition - brick.height / 2;
             ctx.beginPath();
