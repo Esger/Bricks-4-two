@@ -88,7 +88,7 @@ export class Game {
         this.paddleBottom.reset();
         this.ballTop.reset();
         this.ballBottom.reset();
-        this.wall.init();
+        this.wall.initializeWall();
     }
 
     scorePoint(winner) {

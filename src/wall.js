@@ -1,21 +1,22 @@
 export class Brick {
-    constructor(r, c, w, h) {
-        this.r = Math.round(r);
-        this.c = c;
-        this.w = 60; // Standard visual width
-        this.h = h;
-        this.updatePos();
+    constructor(row, column, height) {
+        this.row = Math.round(row);
+        this.column = Math.round(column);
+        this.width = 60; // Clean grid width
+        this.height = height;
+        this.updateCanvasPosition();
     }
 
-    updatePos() {
-        const columnSpacing = 60;
-        const staggerShift = 30; // Half-width aside
+    updateCanvasPosition() {
+        const standardWidth = 60;
+        const staggerShiftValue = 30; // 50% aside jump for masonry
 
-        // Logical "Aside" toggle: Every row change flips the X-offset by 30px
-        const rowOffset = (Math.abs(this.r) % 2) * staggerShift;
+        // Stagger logic: Every odd row is offset by 30px
+        const rowParity = Math.abs(this.row) % 2;
+        const horizontalOffset = (rowParity === 1) ? staggerShiftValue : 0;
 
-        this.x = this.c * columnSpacing + rowOffset;
-        this.y = this.r * this.h;
+        this.canvasXPosition = (this.column * standardWidth) + horizontalOffset;
+        this.canvasYPosition = (this.row * this.height);
     }
 }
 
@@ -25,134 +26,227 @@ export class Wall {
         this.brickWidth = 60;
         this.brickHeight = 25;
         this.columnSpacing = 60;
-        this.bricks = new Map(); // Key: 'c,r' -> Brick
-        this.depths = []; // Integer row depths per column
 
-        this.init();
+        // Primary State: A Map of logical positions to Brick objects
+        this.activeBricksMap = new Map(); // Key: 'column,row' -> Brick object
+
+        this.initializeWall();
     }
 
-    init() {
-        const gameWidth = this.canvas.clientWidth;
-        this.midR = Math.round((this.canvas.clientHeight / 2) / this.brickHeight);
+    initializeWall() {
+        this.activeBricksMap.clear();
+        const screenWidth = this.canvas.clientWidth || 800;
+        const firstVisibleCol = Math.floor(-120 / this.columnSpacing);
+        const lastVisibleCol = Math.ceil((screenWidth + 120) / this.columnSpacing);
+        const baselineRow = Math.round((this.canvas.clientHeight / 2) / this.brickHeight);
 
-        // Grid coverage
-        this.numCols = Math.ceil(gameWidth / this.columnSpacing) + 6;
-        this.startCol = -3;
-
-        this.depths = new Array(this.numCols).fill(this.midR);
-        this.rebuildBricks();
+        // Build initial flat ribbon
+        for (let col = firstVisibleCol; col <= lastVisibleCol; col++) {
+            this.addBrickToMap(baselineRow, col);
+        }
     }
 
-    addBrick(r, c) {
-        const key = `${c},${r}`;
-        if (this.bricks.has(key)) return;
-        this.bricks.set(key, new Brick(r, c, this.brickWidth, this.brickHeight));
+    addBrickToMap(row, col) {
+        const key = `${col},${row}`;
+        if (this.activeBricksMap.has(key)) return;
+        this.activeBricksMap.set(key, new Brick(row, col, this.brickHeight));
     }
 
-    rebuildBricks() {
-        this.bricks.clear();
-        // SURGICAL STAIRCASE:
-        // Every column builds a minimal vertical pillar to seal with the NEXT neighbor.
-        // This ensures a 100% solid wall for any height step while staying lean.
-        for (let i = 0; i < this.numCols; i++) {
-            const rMe = this.depths[i];
-            const cMe = this.startCol + i;
+    removeBrickFromMap(row, col) {
+        this.activeBricksMap.delete(`${col},${row}`);
+    }
 
-            // Build bricks from my depth to the neighbor's depth
-            let minR = rMe;
-            let maxR = rMe;
+    getTouchingNeighbors(row, col) {
+        const parity = Math.abs(row) % 2;
+        const neighbors = [[row, col - 1], [row, col + 1]]; // Horizontal
 
-            if (i < this.numCols - 1) {
-                const rNext = this.depths[i + 1];
-                minR = Math.min(rMe, rNext);
-                maxR = Math.max(rMe, rNext);
+        // Vertical neighbors in staggered grid
+        if (parity === 0) { // Even touches same and left-shift
+            neighbors.push([row - 1, col], [row - 1, col - 1], [row + 1, col], [row + 1, col - 1]);
+        } else { // Odd touches same and right-shift
+            neighbors.push([row - 1, col], [row - 1, col + 1], [row + 1, col], [row + 1, col + 1]);
+        }
+        return neighbors;
+    }
+
+    // THE TOPOLOGICAL RIBBON ENGINE (Surgical 5-Pass Algorithm)
+    processImpact(hitBrick, ballSide) {
+        const oldRow = hitBrick.row;
+        const colIdx = hitBrick.column;
+        const pushDir = (ballSide === 'top' ? 1 : -1);
+        const targetRowIndex = oldRow + pushDir;
+
+        // --- PASS 1: GROWTH (Support Shell & Mortar) ---
+        // 1. Add the moved brick
+        this.addBrickToMap(targetRowIndex, colIdx);
+
+        // 2. Add "Two Behind in Mortar Pattern"
+        // These are the bricks in the target row that overlap the old footprint
+        const oldParity = Math.abs(oldRow) % 2;
+        const mortarPartnerCol = (oldParity === 0) ? colIdx - 1 : colIdx + 1;
+        this.addBrickToMap(targetRowIndex, mortarPartnerCol);
+
+        // 3. Add "Two to the Sides"
+        this.addBrickToMap(targetRowIndex, colIdx - 1);
+        this.addBrickToMap(targetRowIndex, colIdx + 1);
+
+        // 4. "Fill Gaps that arose" (Airtight Stitching)
+        // Ensure connectivity between neighbors in the affected area
+        for (let c = colIdx - 1; c <= colIdx; c++) {
+            this.bridgeVerticalGapBetweenColumns(c, c + 1);
+        }
+
+        // --- PASS 2: REMOVE HIT BRICK (The surgery) ---
+        this.removeBrickFromMap(oldRow, colIdx);
+
+        // --- PASS 3: Deduplication (Map-based) ---
+
+        // --- PASS 4 & 5: PRUNING & ORPHAN CLEANUP ---
+        this.performRibbonSanitization();
+    }
+
+    bridgeVerticalGapBetweenColumns(colA, colB) {
+        // Find bricks in each column
+        const bricksA = [...this.activeBricksMap.values()].filter(b => b.column === colA);
+        const bricksB = [...this.activeBricksMap.values()].filter(b => b.column === colB);
+        if (bricksA.length === 0 || bricksB.length === 0) return;
+
+        // Check if any A brick touches any B brick
+        let isConnected = false;
+        for (const a of bricksA) {
+            const neighbors = this.getTouchingNeighbors(a.row, a.column);
+            for (const [nr, nc] of neighbors) {
+                if (this.activeBricksMap.has(`${nc},${nr}`)) isConnected = true;
             }
+        }
 
-            // Fill the range - ensures no horizontal or vertical holes
-            for (let r = minR; r <= maxR; r++) {
-                this.addBrick(r, cMe);
+        // If not connected, add bridge bricks in Col A to reach the nearest Col B brick
+        if (!isConnected) {
+            bricksA.sort((x, y) => x.row - y.row);
+            bricksB.sort((x, y) => x.row - y.row);
+            const anchorA = bricksA[0];
+            const anchorB = bricksB[0];
+            const step = (anchorB.row > anchorA.row) ? 1 : -1;
+            let current = anchorA.row;
+            while (Math.abs(current - anchorB.row) > 1) {
+                current += step;
+                this.addBrickToMap(current, colA);
             }
         }
     }
 
+    performRibbonSanitization() {
+        // --- PASS 4: THICKNESS PRUNING (Strict 1D Limit) ---
+        // For every column, keep only the bricks that connect to neighbors
+        const columnMap = new Map();
+        for (const brick of this.activeBricksMap.values()) {
+            if (!columnMap.has(brick.column)) columnMap.set(brick.column, []);
+            columnMap.get(brick.column).push(brick);
+        }
+
+        const bricksToKeepKeys = new Set();
+        for (const [col, bricks] of columnMap.entries()) {
+            // Bricks in this column that have neighbors in col-1 or col+1
+            const connectionRows = [];
+            for (const b of bricks) {
+                const neighbors = this.getTouchingNeighbors(b.row, b.column);
+                let touchesNextColumn = false;
+                for (const [nr, nc] of neighbors) {
+                    if (nc !== col && this.activeBricksMap.has(`${nc},${nr}`)) {
+                        touchesNextColumn = true;
+                        break;
+                    }
+                }
+                if (touchesNextColumn) connectionRows.push(b.row);
+            }
+
+            if (connectionRows.length > 0) {
+                const minR = Math.min(...connectionRows);
+                const maxR = Math.max(...connectionRows);
+                // Keep the vertical segment connecting these points
+                for (const b of bricks) {
+                    if (b.row >= minR && b.row <= maxR) bricksToKeepKeys.add(`${col},${b.row}`);
+                }
+            } else {
+                // If no connections, it might be a head/tail spine; keep at least one
+                const avgRow = Math.round(bricks.reduce((sum, b) => sum + b.row, 0) / bricks.length);
+                bricksToKeepKeys.add(`${col},${avgRow}`);
+            }
+        }
+
+        // Wipe everything not flagged as essential 1D ribbon
+        for (const key of this.activeBricksMap.keys()) {
+            if (!bricksToKeepKeys.has(key)) this.activeBricksMap.delete(key);
+        }
+
+        // --- PASS 5: ORPHAN CLEANUP ---
+        const removalCandidates = [];
+        for (const [key, brick] of this.activeBricksMap.entries()) {
+            let n = 0;
+            const pts = this.getTouchingNeighbors(brick.row, brick.column);
+            for (const [r, c] of pts) if (this.activeBricksMap.has(`${c},${r}`)) n++;
+
+            // Protected edges
+            const screenW = this.canvas.clientWidth || 800;
+            const leftEdgeIdx = Math.floor(-60 / this.columnSpacing);
+            const rightEdgeIdx = Math.ceil((screenW + 60) / this.columnSpacing);
+
+            if (n < 1 && brick.column > leftEdgeIdx && brick.column < rightEdgeIdx) {
+                removalCandidates.push(key);
+            }
+        }
+        for (const k of removalCandidates) this.activeBricksMap.delete(k);
+    }
+
     update(game) {
-        // SURGICAL PERMANENCE: No auto-healing.
-        // Bricks only move when hit.
-        for (const b of this.bricks.values()) b.updatePos();
+        // Enforce boundary safety
+        const lowestRowOnScreen = Math.floor(game.height / this.brickHeight) - 3;
+        for (const brick of this.activeBricksMap.values()) {
+            if (brick.row < 4) brick.row = 4;
+            if (brick.row > lowestRowOnScreen) brick.row = lowestRowOnScreen;
+            brick.updateCanvasPosition();
+        }
     }
 
     checkCollision(ball) {
-        // GHOST SHIELD: Physics (120px) ensures zero tunneling on corners.
-        const physicsRW = 60 + ball.radius;
-        const physicsRH = (this.brickHeight / 2) + ball.radius + 2;
+        // GHOST SHIELD: 30.5px internal width (61px total) for airtight physics
+        const contactRadiusX = 30.5 + ball.radius;
+        const contactRadiusY = (this.brickHeight / 2) + ball.radius + 2;
 
-        let bestBrick = null;
-        let minDx = Infinity;
+        let bestTargetInstance = null;
+        let minimumDxValue = Infinity;
 
-        for (const brick of this.bricks.values()) {
-            const dx = ball.x - brick.x;
-            const dy = ball.y - brick.y;
+        for (const brick of this.activeBricksMap.values()) {
+            const dx = ball.x - brick.canvasXPosition;
+            const dy = ball.y - brick.canvasYPosition;
 
-            if (Math.abs(dx) < physicsRW && Math.abs(dy) < physicsRH) {
-                const isHeadingTowardsWall = (ball.side === 'top' && ball.vy > 0) ||
+            if (Math.abs(dx) < contactRadiusX && Math.abs(dy) < contactRadiusY) {
+                const ballMovingToWall = (ball.side === 'top' && ball.vy > 0) ||
                     (ball.side === 'bottom' && ball.vy < 0);
 
-                if (isHeadingTowardsWall || Math.abs(dy) < 10) {
-                    if (Math.abs(dx) < minDx) {
-                        minDx = Math.abs(dx);
-                        bestBrick = brick;
+                if (ballMovingToWall || Math.abs(dy) < 10) {
+                    if (Math.abs(dx) < minimumDxValue) {
+                        minimumDxValue = Math.abs(dx);
+                        bestTargetInstance = brick;
                     }
                 }
             }
         }
 
-        if (bestBrick) {
-            // SURGICAL MOVE: Exactly 1 row height (25px)
-            const localIdx = bestBrick.c - this.startCol;
-            const push = (ball.side === 'top' ? 1 : -1);
-            this.depths[localIdx] += push;
+        if (bestTargetInstance) {
+            // SURGICAL PROCESS: Applying your 5-Pass Algorithm
+            this.processImpact(bestTargetInstance, ball.side);
 
-            this.rebuildBricks(); // Snaps to new position, old bricks are GONE.
+            // Physics Bounce
+            const target = bestTargetInstance;
+            const relativeOffsetV = ball.y - target.canvasYPosition;
+            ball.vy *= -1;
 
-            // Resolve axes relative to the hit spot
-            const b = bestBrick;
-            const dx = ball.x - b.x;
-            const dy = ball.y - b.y;
-            const visRW = (this.brickWidth / 2) + ball.radius;
-            const visRH = (this.brickHeight / 2) + ball.radius;
-
-            const overlapX = visRW - Math.abs(dx);
-            const overlapY = visRH - Math.abs(dy);
-
-            if (overlapX < (overlapY - 5) && Math.abs(dx) > (this.brickWidth / 2 - 10)) {
-                ball.vx *= -1;
-                ball.x = dx > 0 ? b.x + visRW + 2 : b.x - visRW - 2;
-                // Field-Safe Ejection
-                if (ball.side === 'top') ball.y = Math.min(ball.y, b.y - visRH);
-                else ball.y = Math.max(ball.y, b.y + visRH);
-            } else {
-                ball.vy *= -1;
-                // ROBUST EJECTION: 12px boost ensures it clears the new 'aside' jump
-                const ejectDist = visRH + 12;
-                ball.y = dy > 0 ? b.y + ejectDist : b.y - ejectDist;
-            }
+            // Critical Ejection Clearance (15px)
+            const clearanceDistance = (this.brickHeight / 2) + ball.radius + 15;
+            ball.y = relativeOffsetV > 0 ? target.canvasYPosition + clearanceDistance : target.canvasYPosition - clearanceDistance;
 
             return true;
-        }
-
-        // TERRITORY SAFETY NET - Absolute stop-gap
-        const colIdx = Math.round(ball.x / 60) - this.startCol;
-        if (colIdx >= 0 && colIdx < this.numCols) {
-            const wallBoundary = this.depths[colIdx] * this.brickHeight;
-            const buffer = ball.radius + 5;
-            if (ball.side === 'top' && ball.y > wallBoundary - buffer) {
-                ball.y = wallBoundary - (buffer + 15);
-                ball.vy = -Math.abs(ball.vy);
-            }
-            if (ball.side === 'bottom' && ball.y < wallBoundary + buffer) {
-                ball.y = wallBoundary + (buffer + 15);
-                ball.vy = Math.abs(ball.vy);
-            }
         }
 
         return false;
@@ -166,12 +260,12 @@ export class Wall {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.lineWidth = 1;
 
-        for (const b of this.bricks.values()) {
-            const rx = b.x - b.w / 2;
-            const ry = b.y - b.h / 2;
+        for (const brick of this.activeBricksMap.values()) {
+            const rx = brick.canvasXPosition - brick.width / 2;
+            const ry = brick.canvasYPosition - brick.height / 2;
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(rx, ry, b.w, b.h, 4);
-            else ctx.rect(rx, ry, b.w, b.h);
+            if (ctx.roundRect) ctx.roundRect(rx, ry, brick.width, brick.height, 4);
+            else ctx.rect(rx, ry, brick.width, brick.height);
             ctx.fill();
             ctx.stroke();
         }
