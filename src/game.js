@@ -43,6 +43,7 @@ export class Game {
         };
 
         this.canvas.addEventListener('pointermove', handlePointer);
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
         this.canvas.addEventListener('pointerdown', (e) => {
             const rect = this.canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
