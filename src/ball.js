@@ -40,10 +40,12 @@ export class Ball {
         const dy = targetY - (this.side === 'top' ? 20 : this.canvas.clientHeight - 20);
 
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const speed = Math.min(10, dist / 40); // Max speed limit
 
-        this.vx = (dx / dist) * speed;
-        this.vy = (dy / dist) * speed;
+        // This sets the speed for the life of this ball
+        this.gameSpeed = Math.min(10, dist / 40);
+
+        this.vx = (dx / dist) * this.gameSpeed;
+        this.vy = (dy / dist) * this.gameSpeed;
     }
 
     update(game) {
@@ -54,7 +56,6 @@ export class Ball {
 
         const gameWidth = game.width;
         const gameHeight = game.height;
-        const wallMid = gameHeight / 2;
 
         // Bounce off left/right walls
         if (this.x - this.radius < 0) {
@@ -81,6 +82,11 @@ export class Ball {
                     // Change direction based on where it hit the paddle
                     const hitPos = (this.x - paddle.x) / (paddle.width / 2);
                     this.vx += hitPos * 2;
+
+                    // RE-NORMALIZE TO THE LAUNCH SPEED
+                    const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    this.vx = (this.vx / currentSpeed) * this.gameSpeed;
+                    this.vy = (this.vy / currentSpeed) * this.gameSpeed;
                 }
             }
 
@@ -98,6 +104,11 @@ export class Ball {
                     // Change direction based on where it hit the paddle
                     const hitPos = (this.x - paddle.x) / (paddle.width / 2);
                     this.vx += hitPos * 2;
+
+                    // RE-NORMALIZE TO THE LAUNCH SPEED
+                    const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                    this.vx = (this.vx / currentSpeed) * this.gameSpeed;
+                    this.vy = (this.vy / currentSpeed) * this.gameSpeed;
                 }
             }
 
@@ -106,13 +117,6 @@ export class Ball {
                 game.scorePoint('top');
                 this.reset();
             }
-        }
-
-        // Limit speed to prevent skipping
-        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-        if (speed > 15) {
-            this.vx = (this.vx / speed) * 15;
-            this.vy = (this.vy / speed) * 15;
         }
     }
 

@@ -34,10 +34,8 @@ export class Game {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            // Top half controls top paddle, bottom half controls bottom paddle
-            if (y < this.height / 2) {
-                this.paddleTop.moveTo(x);
-            } else {
+            // ONLY BOTTOM PLAYER CAN MOVE (Opponent top is inert)
+            if (y >= this.height / 2) {
                 this.paddleBottom.moveTo(x);
             }
         };
@@ -49,9 +47,8 @@ export class Game {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            if (y < this.height / 2) {
-                this.ballTop.launch(this.paddleTop.x, x, y);
-            } else {
+            // ONLY BOTTOM PLAYER CAN LAUNCH (Opponent top is inert)
+            if (y >= this.height / 2) {
                 this.ballBottom.launch(this.paddleBottom.x, x, y);
             }
         });
@@ -108,6 +105,10 @@ export class Game {
 
     update(now) {
         if (!this.running) return;
+
+        // --- TRAINING PAUSE ---
+        // Escape key toggles this state in wall.js
+        if (this.wall.isDebugPaused) return;
 
         this.ballTop.update(this);
         this.ballBottom.update(this);
