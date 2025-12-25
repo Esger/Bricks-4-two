@@ -34,22 +34,33 @@ export class Game {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            // ONLY BOTTOM PLAYER CAN MOVE (Opponent top is inert)
+            // Upper half controls the top player; lower half controls the bottom player
             if (y >= this.height / 2) {
                 this.paddleBottom.moveTo(x);
+            } else {
+                this.paddleTop.moveTo(x);
             }
         };
 
         this.canvas.addEventListener('pointermove', handlePointer);
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Prevent default touch gestures that may trigger browser navigation (edge swipes, back/forward)
+        // Use non-passive listeners so we can call preventDefault()
+        this.canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+        this.canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+        this.canvas.addEventListener('touchend', (e) => { e.preventDefault(); }, { passive: false });
+
         this.canvas.addEventListener('pointerdown', (e) => {
             const rect = this.canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            // ONLY BOTTOM PLAYER CAN LAUNCH (Opponent top is inert)
+            // Upper half can launch the top ball; lower half launches the bottom ball
             if (y >= this.height / 2) {
                 this.ballBottom.launch(this.paddleBottom.x, x, y);
+            } else {
+                this.ballTop.launch(this.paddleTop.x, x, y);
             }
         });
     }
@@ -64,6 +75,9 @@ export class Game {
 
         if (this.paddleTop) this.paddleTop.reset();
         if (this.paddleBottom) this.paddleBottom.reset();
+
+        // Recompute wall layout on canvas resize so bricks always fit exactly
+        if (this.wall) this.wall.initializeWall();
     }
 
     initUI() {

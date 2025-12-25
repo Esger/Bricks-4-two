@@ -1,29 +1,34 @@
 export class Brick {
-    constructor(rowCoordinate, columnCoordinate, height) {
+    constructor(rowCoordinate, columnCoordinate, height, width) {
         this.rowCoordinate = Math.round(rowCoordinate);
         this.columnCoordinate = Math.round(columnCoordinate);
-        this.width = 60;
+        this.width = width || 60;
         this.height = height;
         this.isOrphan = false;
         this.updateVisualPosition();
     }
 
     updateVisualPosition() {
-        const standardWidth = 60;
-        const staggerOffset = 30;
+        const standardWidth = this.width;
+        const staggerOffset = this.width / 2;
         const rowParity = Math.abs(this.rowCoordinate) % 2;
         const xOffset = (rowParity === 1) ? staggerOffset : 0;
-        this.canvasXPosition = (this.columnCoordinate * standardWidth) + xOffset;
-        this.canvasYPosition = (this.rowCoordinate * this.height);
+        // Round to integer CSS pixels to avoid sub-pixel rendering seams
+        this.canvasXPosition = Math.round((this.columnCoordinate * standardWidth) + xOffset);
+        this.canvasYPosition = Math.round(this.rowCoordinate * this.height);
     }
 }
 
 export class Wall {
     constructor(canvas) {
         this.canvas = canvas;
-        this.brickWidth = 60;
+        this.maxBrickWidth = 60;
+        // Initialize brickWidth from max and ensure it's an integer
+        this.brickWidth = this.maxBrickWidth;
         this.brickHeight = 25;
-        this.columnSpacing = 60;
+        this.columnSpacing = this.brickWidth;
+        // Number of extra brick columns to add beyond the visible canvas on each side
+        this.edgeBufferCols = 1;
         this.activeBrickMap = new Map();
 
         // --- ANCHOR STATE ---
@@ -53,8 +58,8 @@ export class Wall {
             const clickX = e.clientX - rect.left;
             const clickY = e.clientY - rect.top;
             const row = Math.round(clickY / this.brickHeight);
-            const xShift = (Math.abs(row) % 2 === 1) ? 30 : 0;
-            const col = Math.round((clickX - xShift) / 60);
+            const xShift = (Math.abs(row) % 2 === 1) ? (this.brickWidth / 2) : 0;
+            const col = Math.round((clickX - xShift) / this.brickWidth);
             const key = `${col},${row}`;
             if (this.activeBrickMap.has(key)) this.activeBrickMap.delete(key);
             else this.addBrickAt(row, col);
@@ -130,9 +135,16 @@ export class Wall {
     initializeWall() {
         this.activeBrickMap.clear();
         this.baselineMiddleRow = Math.round((this.canvas.clientHeight / 2) / this.brickHeight);
-        const screenW = this.canvas.clientWidth / window.devicePixelRatio || 800;
-        this.masterMinCol = Math.floor(-150 / this.columnSpacing);
-        this.masterMaxCol = Math.ceil((screenW + 150) / this.columnSpacing);
+        // Use CSS pixel width directly and fit an integer number of bricks to avoid cut-offs
+        const screenW = this.canvas.clientWidth || 800;
+
+        // Determine how many whole bricks would fit at the maximum brick width,
+        const minBricks = Math.floor(screenW / this.maxBrickWidth);
+        this.brickWidth = Math.max(1, Math.floor(screenW / minBricks));
+        this.columnSpacing = this.brickWidth;
+
+        this.masterMinCol = Math.floor(-150 / this.columnSpacing) - this.edgeBufferCols;
+        this.masterMaxCol = Math.ceil((screenW + 150) / this.columnSpacing) + this.edgeBufferCols;
         for (let c = this.masterMinCol; c <= this.masterMaxCol; c++) this.addBrickAt(this.baselineMiddleRow, c);
         this.analyzeTopology();
     }
@@ -140,7 +152,7 @@ export class Wall {
     addBrickAt(row, col) {
         const key = `${col},${row}`;
         if (this.activeBrickMap.has(key)) return false;
-        this.activeBrickMap.set(key, new Brick(row, col, this.brickHeight));
+        this.activeBrickMap.set(key, new Brick(row, col, this.brickHeight, this.brickWidth));
         return true;
     }
 
@@ -213,24 +225,55 @@ export class Wall {
 
     checkCollision(ball) {
         if (this.isDebugPaused) return false;
-        const sX = 36 + ball.radius;
-        const sY = (this.brickHeight / 2) + ball.radius + 4;
-        let best = null, minDx = Infinity;
+        let best = null, minPenetration = Infinity, bestPen = null;
         for (const b of this.activeBrickMap.values()) {
             const dx = ball.x - b.canvasXPosition, dy = ball.y - b.canvasYPosition;
-            if (Math.abs(dx) < sX && Math.abs(dy) < sY) {
-                if (((ball.side === 'top' && ball.vy > 0) || (ball.side === 'bottom' && ball.vy < 0)) || Math.abs(dy) < 5) {
-                    if (Math.abs(dx) < minDx) { minDx = Math.abs(dx); best = b; }
+            // Use a bounding box based on the actual brick size plus the ball radius
+            const sX = (b.width / 2) + ball.radius + 2;
+            const sY = (b.height / 2) + ball.radius + 2;
+            if (Math.abs(dx) <= sX && Math.abs(dy) <= sY) {
+                // Only collide if the ball is moving toward the brick vertically or already significantly overlapping,
+                // but allow side collisions when horizontal penetration is evident
+                const movingTowards = (ball.side === 'top' && ball.vy > 0) || (ball.side === 'bottom' && ball.vy < 0);
+                const verticalOverlap = Math.abs(dy) < (ball.radius + 3);
+                const overlapX = sX - Math.abs(dx);
+                const overlapY = sY - Math.abs(dy);
+                if (movingTowards || verticalOverlap || overlapX > 0.5) {
+                    const penetration = Math.min(overlapX, overlapY);
+                    if (penetration < minPenetration) {
+                        minPenetration = penetration;
+                        best = b;
+                        bestPen = { dx, dy, overlapX, overlapY };
+                    }
                 }
             }
         }
         if (best) {
             this.processWallImpact(best, ball.side);
-            const impactVy = ball.vy;
-            ball.vy *= -1;
-            const ejectOffset = (this.brickHeight / 2) + ball.radius + 36;
-            if (impactVy > 0) ball.y = best.canvasYPosition - ejectOffset;
-            else ball.y = best.canvasYPosition + ejectOffset;
+
+            // Decide collision axis by comparing penetration depths
+            if (bestPen.overlapX < bestPen.overlapY) {
+                // Side collision — reflect horizontally
+                ball.vx *= -1;
+                const ejectOffsetX = (best.width / 2) + ball.radius + 2;
+                if (bestPen.dx > 0) ball.x = best.canvasXPosition + ejectOffsetX;
+                else ball.x = best.canvasXPosition - ejectOffsetX;
+            } else {
+                // Vertical collision — reflect vertically
+                const impactVy = ball.vy;
+                ball.vy *= -1;
+                const ejectOffsetY = (best.height / 2) + ball.radius + 2;
+                if (impactVy > 0) ball.y = best.canvasYPosition - ejectOffsetY;
+                else ball.y = best.canvasYPosition + ejectOffsetY;
+            }
+
+            // Preserve intended speed if set (paddle launches rely on gameSpeed)
+            if (ball.gameSpeed) {
+                const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy) || 1;
+                ball.vx = (ball.vx / currentSpeed) * ball.gameSpeed;
+                ball.vy = (ball.vy / currentSpeed) * ball.gameSpeed;
+            }
+
             return true;
         }
         return false;
@@ -240,7 +283,12 @@ export class Wall {
         ctx.save();
         ctx.shadowBlur = 10;
         for (const [key, b] of this.activeBrickMap.entries()) {
-            const rx = b.canvasXPosition - b.width / 2, ry = b.canvasYPosition - b.height / 2;
+            // Draw each brick slightly smaller to create a hairline gap between neighbors and avoid overlap
+            const drawW = Math.max(1, b.width - 1);
+            const drawH = Math.max(1, b.height - 1);
+            const rx = Math.round(b.canvasXPosition - (drawW / 2));
+            const ry = Math.round(b.canvasYPosition - (drawH / 2));
+
             if (this.isDebugPaused) {
                 const isAutoAdd = this.lastAuditAdded.includes(key);
                 if (isAutoAdd) {
@@ -255,9 +303,10 @@ export class Wall {
                 ctx.fillStyle = b.isOrphan ? 'rgba(255, 62, 62, 0.2)' : 'rgba(255,255,255,0.15)';
                 ctx.strokeStyle = b.isOrphan ? '#ff3e3e' : 'rgba(255,255,255,0.4)';
             }
+            ctx.lineWidth = 1;
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(rx, ry, b.width, b.height, 4);
-            else ctx.rect(rx, ry, b.width, b.height);
+            if (ctx.roundRect) ctx.roundRect(rx, ry, drawW, drawH, 4);
+            else ctx.rect(rx, ry, drawW, drawH);
             ctx.fill(); ctx.stroke();
         }
 
@@ -276,14 +325,18 @@ export class Wall {
 
     drawGhost(ctx, row, col, color, dash = []) {
         const parity = Math.abs(row) % 2;
-        const xShift = (parity === 1) ? 30 : 0;
-        const gx = (col * 60) + xShift;
+        const xShift = (parity === 1) ? (this.brickWidth / 2) : 0;
+        const gx = (col * this.brickWidth) + xShift;
         const gy = row * this.brickHeight;
         ctx.save();
         ctx.strokeStyle = color; ctx.setLineDash(dash); ctx.lineWidth = 2;
         ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(gx - 30, gy - 12.5, 60, 25, 4);
-        else ctx.rect(gx - 30, gy - 12.5, 60, 25);
+        const drawW = Math.max(1, this.brickWidth - 1);
+        const drawH = Math.max(1, this.brickHeight - 1);
+        const halfW = drawW / 2;
+        const halfH = drawH / 2;
+        if (ctx.roundRect) ctx.roundRect(gx - halfW, gy - halfH, drawW, drawH, 4);
+        else ctx.rect(gx - halfW, gy - halfH, drawW, drawH);
         ctx.stroke();
         ctx.restore();
     }

@@ -11,6 +11,11 @@ export class Ball {
         this.vy = 0;
         this.active = false;
 
+        // Speed growth configuration
+        this.maxGameSpeed = 10;
+        // Slow the per-bounce asymptotic growth so speed increases gently during long rallies
+        this.bounceGrowthFactor = 0.015; // fraction of remaining gap to max applied per bounce
+
         this.reset();
     }
 
@@ -39,13 +44,28 @@ export class Ball {
         const dx = targetX - paddleX;
         const dy = targetY - (this.side === 'top' ? 20 : this.canvas.clientHeight - 20);
 
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        // Avoid divide-by-zero for extremely short taps
+        const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
 
         // This sets the speed for the life of this ball
-        this.gameSpeed = Math.min(10, dist / 40);
+        const minSpeed = 2; // ensures very short taps still launch at playable speed
+        const maxSpeed = 10;
+        this.gameSpeed = Math.min(maxSpeed, Math.max(minSpeed, dist / 40));
 
-        this.vx = (dx / dist) * this.gameSpeed;
-        this.vy = (dy / dist) * this.gameSpeed;
+        // Normalize direction
+        let nx = dx / dist;
+        let ny = dy / dist;
+
+        // Clamp angle to be within 45°..135° (i.e., ensure vertical component magnitude >= horizontal)
+        if (Math.abs(ny) < Math.abs(nx)) {
+            // Snap to the nearest 45° boundary while preserving signs
+            ny = Math.sign(ny) * Math.abs(nx);
+            const nlen = Math.hypot(nx, ny) || 1;
+            nx /= nlen; ny /= nlen;
+        }
+
+        this.vx = nx * this.gameSpeed;
+        this.vy = ny * this.gameSpeed;
     }
 
     update(game) {
@@ -61,13 +81,17 @@ export class Ball {
         if (this.x - this.radius < 0) {
             this.x = this.radius;
             this.vx *= -1;
+            this._onBounce();
         } else if (this.x + this.radius > gameWidth) {
             this.x = gameWidth - this.radius;
             this.vx *= -1;
+            this._onBounce();
         }
 
-        // Bounce off the middle wall
-        game.wall.checkCollision(this);
+        // Bounce off the middle wall (bricks)
+        if (game.wall.checkCollision(this)) {
+            this._onBounce();
+        }
 
         // Bounce off paddles or go off-screen
         const paddle = (this.side === 'top') ? game.paddleTop : game.paddleBottom;
@@ -87,6 +111,8 @@ export class Ball {
                     const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
                     this.vx = (this.vx / currentSpeed) * this.gameSpeed;
                     this.vy = (this.vy / currentSpeed) * this.gameSpeed;
+
+                    this._onBounce();
                 }
             }
 
@@ -109,6 +135,8 @@ export class Ball {
                     const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
                     this.vx = (this.vx / currentSpeed) * this.gameSpeed;
                     this.vy = (this.vy / currentSpeed) * this.gameSpeed;
+
+                    this._onBounce();
                 }
             }
 
@@ -118,6 +146,19 @@ export class Ball {
                 this.reset();
             }
         }
+    }
+
+    _onBounce() {
+        // Increase game speed slightly towards the configured maximum using an asymptotic approach
+        if (!this.gameSpeed) return;
+        const maxSpeed = this.maxGameSpeed || 10;
+        const growth = this.bounceGrowthFactor || 0.05;
+        this.gameSpeed = Math.min(maxSpeed, this.gameSpeed + (maxSpeed - this.gameSpeed) * growth);
+
+        // Re-normalize velocity to the new gameSpeed
+        const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy) || 1;
+        this.vx = (this.vx / currentSpeed) * this.gameSpeed;
+        this.vy = (this.vy / currentSpeed) * this.gameSpeed;
     }
 
     draw(ctx) {
