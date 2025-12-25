@@ -34,9 +34,11 @@ export class Game {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            // ONLY BOTTOM PLAYER CAN MOVE (Opponent top is inert)
+            // Upper half controls the top player; lower half controls the bottom player
             if (y >= this.height / 2) {
                 this.paddleBottom.moveTo(x);
+            } else {
+                this.paddleTop.moveTo(x);
             }
         };
 
@@ -47,9 +49,11 @@ export class Game {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            // ONLY BOTTOM PLAYER CAN LAUNCH (Opponent top is inert)
+            // Upper half can launch the top ball; lower half launches the bottom ball
             if (y >= this.height / 2) {
                 this.ballBottom.launch(this.paddleBottom.x, x, y);
+            } else {
+                this.ballTop.launch(this.paddleTop.x, x, y);
             }
         });
     }
