@@ -11,6 +11,11 @@ export class Ball {
         this.vy = 0;
         this.active = false;
 
+        // Speed growth configuration
+        this.maxGameSpeed = 10;
+        // Slow the per-bounce asymptotic growth so speed increases gently during long rallies
+        this.bounceGrowthFactor = 0.015; // fraction of remaining gap to max applied per bounce
+
         this.reset();
     }
 
@@ -76,13 +81,17 @@ export class Ball {
         if (this.x - this.radius < 0) {
             this.x = this.radius;
             this.vx *= -1;
+            this._onBounce();
         } else if (this.x + this.radius > gameWidth) {
             this.x = gameWidth - this.radius;
             this.vx *= -1;
+            this._onBounce();
         }
 
-        // Bounce off the middle wall
-        game.wall.checkCollision(this);
+        // Bounce off the middle wall (bricks)
+        if (game.wall.checkCollision(this)) {
+            this._onBounce();
+        }
 
         // Bounce off paddles or go off-screen
         const paddle = (this.side === 'top') ? game.paddleTop : game.paddleBottom;
@@ -102,6 +111,8 @@ export class Ball {
                     const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
                     this.vx = (this.vx / currentSpeed) * this.gameSpeed;
                     this.vy = (this.vy / currentSpeed) * this.gameSpeed;
+
+                    this._onBounce();
                 }
             }
 
@@ -124,6 +135,8 @@ export class Ball {
                     const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
                     this.vx = (this.vx / currentSpeed) * this.gameSpeed;
                     this.vy = (this.vy / currentSpeed) * this.gameSpeed;
+
+                    this._onBounce();
                 }
             }
 
@@ -133,6 +146,19 @@ export class Ball {
                 this.reset();
             }
         }
+    }
+
+    _onBounce() {
+        // Increase game speed slightly towards the configured maximum using an asymptotic approach
+        if (!this.gameSpeed) return;
+        const maxSpeed = this.maxGameSpeed || 10;
+        const growth = this.bounceGrowthFactor || 0.05;
+        this.gameSpeed = Math.min(maxSpeed, this.gameSpeed + (maxSpeed - this.gameSpeed) * growth);
+
+        // Re-normalize velocity to the new gameSpeed
+        const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy) || 1;
+        this.vx = (this.vx / currentSpeed) * this.gameSpeed;
+        this.vy = (this.vy / currentSpeed) * this.gameSpeed;
     }
 
     draw(ctx) {
