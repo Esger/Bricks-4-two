@@ -10,6 +10,7 @@ export class Ball {
         this.vx = 0;
         this.vy = 0;
         this.active = false;
+        this.isExtra = false; // flag for spawned extra balls
 
         // Speed growth configuration
         this.maxGameSpeed = 10;
@@ -89,8 +90,11 @@ export class Ball {
         }
 
         // Bounce off the middle wall (bricks)
-        if (game.wall.checkCollision(this)) {
+        const wallHit = game.wall.checkCollision(this);
+        if (wallHit) {
             this._onBounce();
+            // Notify game so it can react to special bricks
+            if (game.onWallHit) game.onWallHit(this);
         }
 
         // Bounce off paddles or go off-screen
