@@ -44,6 +44,13 @@ export class Game {
 
         this.canvas.addEventListener('pointermove', handlePointer);
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Prevent default touch gestures that may trigger browser navigation (edge swipes, back/forward)
+        // Use non-passive listeners so we can call preventDefault()
+        this.canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+        this.canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+        this.canvas.addEventListener('touchend', (e) => { e.preventDefault(); }, { passive: false });
+
         this.canvas.addEventListener('pointerdown', (e) => {
             const rect = this.canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
