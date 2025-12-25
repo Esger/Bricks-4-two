@@ -47,8 +47,20 @@ export class Ball {
         const maxSpeed = 10;
         this.gameSpeed = Math.min(maxSpeed, Math.max(minSpeed, dist / 40));
 
-        this.vx = (dx / dist) * this.gameSpeed;
-        this.vy = (dy / dist) * this.gameSpeed;
+        // Normalize direction
+        let nx = dx / dist;
+        let ny = dy / dist;
+
+        // Clamp angle to be within 45°..135° (i.e., ensure vertical component magnitude >= horizontal)
+        if (Math.abs(ny) < Math.abs(nx)) {
+            // Snap to the nearest 45° boundary while preserving signs
+            ny = Math.sign(ny) * Math.abs(nx);
+            const nlen = Math.hypot(nx, ny) || 1;
+            nx /= nlen; ny /= nlen;
+        }
+
+        this.vx = nx * this.gameSpeed;
+        this.vy = ny * this.gameSpeed;
     }
 
     update(game) {
