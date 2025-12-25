@@ -243,7 +243,7 @@ export class Wall {
                     if (penetration < minPenetration) {
                         minPenetration = penetration;
                         best = b;
-                        bestPen = {dx, dy, overlapX, overlapY};
+                        bestPen = { dx, dy, overlapX, overlapY };
                     }
                 }
             }
