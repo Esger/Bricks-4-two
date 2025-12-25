@@ -31,6 +31,11 @@ export class Wall {
         this.edgeBufferCols = 1;
         this.activeBrickMap = new Map();
 
+        // Special brick config
+        // Specials only appear when the wall auto-fills/repairs; they do NOT spawn on their own
+        this.specialOnRepairChance = 0.06; // chance that an auto-added repair brick is special
+        this.specialBorder = '#00ff88'; // visual border color for special bricks
+
         // --- ANCHOR STATE ---
         this.masterMinCol = 0;
         this.masterMaxCol = 0;
@@ -145,14 +150,22 @@ export class Wall {
 
         this.masterMinCol = Math.floor(-150 / this.columnSpacing) - this.edgeBufferCols;
         this.masterMaxCol = Math.ceil((screenW + 150) / this.columnSpacing) + this.edgeBufferCols;
-        for (let c = this.masterMinCol; c <= this.masterMaxCol; c++) this.addBrickAt(this.baselineMiddleRow, c);
+        for (let c = this.masterMinCol; c <= this.masterMaxCol; c++) {
+            // Baseline starts with normal bricks only; specials appear when the wall auto-repairs during gameplay
+            this.addBrickAt(this.baselineMiddleRow, c, null);
+        }
         this.analyzeTopology();
+
+        // Special-brick spawn cooldown setup
+        this.specialCooldown = Math.floor(this.specialCooldownMin + Math.random() * (this.specialCooldownMax - this.specialCooldownMin)); // frames until possible next spawn
     }
 
-    addBrickAt(row, col) {
+    addBrickAt(row, col, type = null) {
         const key = `${col},${row}`;
         if (this.activeBrickMap.has(key)) return false;
-        this.activeBrickMap.set(key, new Brick(row, col, this.brickHeight, this.brickWidth));
+        const b = new Brick(row, col, this.brickHeight, this.brickWidth);
+        b.type = type; // e.g. 'extraBall'
+        this.activeBrickMap.set(key, b);
         return true;
     }
 
@@ -164,6 +177,10 @@ export class Wall {
 
         this.lastImpactCol = hitC;
         this.lastImpactCoord = { row: hitR, col: hitC };
+
+        // Record hit brick type so external systems can react after removal
+        this.lastHitBrickType = hitBrick.type || null;
+        this.lastHitBrickCoord = { row: hitR, col: hitC };
 
         // STEP 1: Remove hit brick immediately.
         this.activeBrickMap.delete(`${hitC},${hitR}`);
@@ -188,7 +205,9 @@ export class Wall {
                 const key = `${cc},${cr}`;
                 if (this.activeBrickMap.has(key)) continue;
 
-                this.addBrickAt(cr, cc);
+                // Small chance the trial brick becomes a special extraBall (only when auto-adding)
+                const t = (Math.random() < (this.specialOnRepairChance || 0.06)) ? 'extraBall' : null;
+                this.addBrickAt(cr, cc, t);
                 isConnected = this.analyzeTopology();
                 if (isConnected) break; // First individual success wins
                 else this.activeBrickMap.delete(key); // Discard non-repairing clutter
@@ -197,7 +216,8 @@ export class Wall {
             // B. Trial collective fallback
             if (!isConnected) {
                 for (const [cr, cc] of candidates) {
-                    this.addBrickAt(cr, cc);
+                    const t = (Math.random() < (this.specialOnRepairChance || 0.06)) ? 'extraBall' : null;
+                    this.addBrickAt(cr, cc, t);
                     isConnected = this.analyzeTopology();
                     if (isConnected) break;
                 }
@@ -221,6 +241,9 @@ export class Wall {
             if (b.rowCoordinate > floor) b.rowCoordinate = floor;
             b.updateVisualPosition();
         }
+
+        // No autonomous special spawning here — specials are only created when the wall auto-repairs to keep connectivity intact
+        // (This keeps specials tied to gameplay actions.)
     }
 
     checkCollision(ball) {
@@ -289,7 +312,12 @@ export class Wall {
             const rx = Math.round(b.canvasXPosition - (drawW / 2));
             const ry = Math.round(b.canvasYPosition - (drawH / 2));
 
-            if (this.isDebugPaused) {
+            // Visual treatment for special bricks
+            if (b.type === 'extraBall') {
+                ctx.shadowColor = b.isOrphan ? '#ff3e3e' : this.specialBorder || '#00ff88';
+                ctx.fillStyle = b.isOrphan ? 'rgba(255, 62, 62, 0.3)' : 'rgba(0, 200, 80, 0.12)';
+                ctx.strokeStyle = this.specialBorder || '#00ff88';
+            } else if (this.isDebugPaused) {
                 const isAutoAdd = this.lastAuditAdded.includes(key);
                 if (isAutoAdd) {
                     ctx.shadowColor = '#00d0ff'; ctx.fillStyle = 'rgba(0, 208, 255, 0.4)'; ctx.strokeStyle = '#00d0ff';
@@ -303,11 +331,22 @@ export class Wall {
                 ctx.fillStyle = b.isOrphan ? 'rgba(255, 62, 62, 0.2)' : 'rgba(255,255,255,0.15)';
                 ctx.strokeStyle = b.isOrphan ? '#ff3e3e' : 'rgba(255,255,255,0.4)';
             }
-            ctx.lineWidth = 1;
+            ctx.lineWidth = (b.type === 'extraBall') ? 2 : 1;
             ctx.beginPath();
             if (ctx.roundRect) ctx.roundRect(rx, ry, drawW, drawH, 4);
             else ctx.rect(rx, ry, drawW, drawH);
             ctx.fill(); ctx.stroke();
+
+            // Draw center icon for special bricks
+            if (b.type === 'extraBall') {
+                ctx.save();
+                ctx.fillStyle = '#3ac47d';
+                const r = Math.min(6, drawH / 3, drawW / 3);
+                ctx.beginPath();
+                ctx.arc(b.canvasXPosition, b.canvasYPosition, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
         }
 
         if (this.isDebugPaused) {
