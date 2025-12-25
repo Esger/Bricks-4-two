@@ -39,10 +39,13 @@ export class Ball {
         const dx = targetX - paddleX;
         const dy = targetY - (this.side === 'top' ? 20 : this.canvas.clientHeight - 20);
 
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        // Avoid divide-by-zero for extremely short taps
+        const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
 
         // This sets the speed for the life of this ball
-        this.gameSpeed = Math.min(10, dist / 40);
+        const minSpeed = 2; // ensures very short taps still launch at playable speed
+        const maxSpeed = 10;
+        this.gameSpeed = Math.min(maxSpeed, Math.max(minSpeed, dist / 40));
 
         this.vx = (dx / dist) * this.gameSpeed;
         this.vy = (dy / dist) * this.gameSpeed;
