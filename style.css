@@ -29,7 +29,8 @@ html {
 #game-container {
     position: relative;
     width: 100vw;
-    height: 100vh;
+    /* Use dynamic viewport height to avoid browser chrome overlapping content on mobile */
+    height: 100dvh;
     display: flex;
     flex-direction: column;
 }
