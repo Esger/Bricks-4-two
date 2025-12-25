@@ -225,24 +225,55 @@ export class Wall {
 
     checkCollision(ball) {
         if (this.isDebugPaused) return false;
-        const sX = 36 + ball.radius;
-        const sY = (this.brickHeight / 2) + ball.radius + 4;
-        let best = null, minDx = Infinity;
+        let best = null, minPenetration = Infinity, bestPen = null;
         for (const b of this.activeBrickMap.values()) {
             const dx = ball.x - b.canvasXPosition, dy = ball.y - b.canvasYPosition;
-            if (Math.abs(dx) < sX && Math.abs(dy) < sY) {
-                if (((ball.side === 'top' && ball.vy > 0) || (ball.side === 'bottom' && ball.vy < 0)) || Math.abs(dy) < 5) {
-                    if (Math.abs(dx) < minDx) { minDx = Math.abs(dx); best = b; }
+            // Use a bounding box based on the actual brick size plus the ball radius
+            const sX = (b.width / 2) + ball.radius + 2;
+            const sY = (b.height / 2) + ball.radius + 2;
+            if (Math.abs(dx) <= sX && Math.abs(dy) <= sY) {
+                // Only collide if the ball is moving toward the brick vertically or already significantly overlapping,
+                // but allow side collisions when horizontal penetration is evident
+                const movingTowards = (ball.side === 'top' && ball.vy > 0) || (ball.side === 'bottom' && ball.vy < 0);
+                const verticalOverlap = Math.abs(dy) < (ball.radius + 3);
+                const overlapX = sX - Math.abs(dx);
+                const overlapY = sY - Math.abs(dy);
+                if (movingTowards || verticalOverlap || overlapX > 0.5) {
+                    const penetration = Math.min(overlapX, overlapY);
+                    if (penetration < minPenetration) {
+                        minPenetration = penetration;
+                        best = b;
+                        bestPen = {dx, dy, overlapX, overlapY};
+                    }
                 }
             }
         }
         if (best) {
             this.processWallImpact(best, ball.side);
-            const impactVy = ball.vy;
-            ball.vy *= -1;
-            const ejectOffset = (this.brickHeight / 2) + ball.radius + 36;
-            if (impactVy > 0) ball.y = best.canvasYPosition - ejectOffset;
-            else ball.y = best.canvasYPosition + ejectOffset;
+
+            // Decide collision axis by comparing penetration depths
+            if (bestPen.overlapX < bestPen.overlapY) {
+                // Side collision — reflect horizontally
+                ball.vx *= -1;
+                const ejectOffsetX = (best.width / 2) + ball.radius + 2;
+                if (bestPen.dx > 0) ball.x = best.canvasXPosition + ejectOffsetX;
+                else ball.x = best.canvasXPosition - ejectOffsetX;
+            } else {
+                // Vertical collision — reflect vertically
+                const impactVy = ball.vy;
+                ball.vy *= -1;
+                const ejectOffsetY = (best.height / 2) + ball.radius + 2;
+                if (impactVy > 0) ball.y = best.canvasYPosition - ejectOffsetY;
+                else ball.y = best.canvasYPosition + ejectOffsetY;
+            }
+
+            // Preserve intended speed if set (paddle launches rely on gameSpeed)
+            if (ball.gameSpeed) {
+                const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy) || 1;
+                ball.vx = (ball.vx / currentSpeed) * ball.gameSpeed;
+                ball.vy = (ball.vy / currentSpeed) * ball.gameSpeed;
+            }
+
             return true;
         }
         return false;
