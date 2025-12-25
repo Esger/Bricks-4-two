@@ -64,6 +64,9 @@ export class Game {
 
         if (this.paddleTop) this.paddleTop.reset();
         if (this.paddleBottom) this.paddleBottom.reset();
+
+        // Recompute wall layout on canvas resize so bricks always fit exactly
+        if (this.wall) this.wall.initializeWall();
     }
 
     initUI() {
