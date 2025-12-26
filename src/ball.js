@@ -79,18 +79,14 @@ export class Ball {
             if (this.x - this.radius < 0) {
                 this.x = this.radius;
                 this.vx *= -1;
-                this._onBounce();
             } else if (this.x + this.radius > game.width) {
                 this.x = game.width - this.radius;
                 this.vx *= -1;
-                this._onBounce();
             }
 
             // Bounce off the middle wall (bricks)
-            // checkCollision will update this.vx/this.vy if a hit occurs
             const wallHit = game.wall.checkCollision(this);
             if (wallHit) {
-                this._onBounce();
                 if (game.onWallHit) game.onWallHit(this);
             }
         }
@@ -105,45 +101,51 @@ export class Ball {
 
         // Unified Off-screen cleanup
         let scoringWinner = null;
-        if (this.y + this.radius < -100) scoringWinner = 'bottom';
-        else if (this.y - this.radius > gameHeight + 100) scoringWinner = 'top';
+        if (this.y < -this.radius) scoringWinner = 'bottom';
+        else if (this.y > gameHeight + this.radius) scoringWinner = 'top';
 
         if (scoringWinner) {
             game.scorePoint(scoringWinner);
             const ballArray = (this.side === 'top') ? game.ballsTop : game.ballsBottom;
-            const others = ballArray.filter(b => b !== this);
+            const isLast = ballArray.length <= 1;
 
-            if (others.length > 0) {
+            if (!isLast) {
+                // Remove extra ball
                 this.active = false;
-                if (this.side === 'top') game.ballsTop = others;
-                else game.ballsBottom = others;
+                if (this.side === 'top') game.ballsTop = ballArray.filter(b => b !== this);
+                else game.ballsBottom = ballArray.filter(b => b !== this);
             } else {
+                // Last ball on its side - reset to home base
                 this.reset();
                 this.isExtra = false;
+                this.isExtra = false; // Ensure it's no longer marked as extra
+                // The ball remains in the array as it's the primary ball for this side
             }
         }
     }
 
     _checkPaddleBounce(paddle) {
         const pBounds = paddle.getBounds();
-        if (this.x > pBounds.left && this.x < pBounds.right) {
+        // Check if ball is within x-bounds of the paddle
+        if (this.x + this.radius > pBounds.left && this.x - this.radius < pBounds.right) {
+            // Check if ball is overlapping the paddle's vertical space
             if (this.y + this.radius > pBounds.top && this.y - this.radius < pBounds.bottom) {
-                // Determine eject direction
+                // Determine eject direction based on velocity
                 if (this.vy < 0 && this.y > pBounds.centerY) {
+                    // Hit top paddle from below
                     this.y = pBounds.bottom + this.radius;
                     this.vy *= -1;
                 } else if (this.vy > 0 && this.y < pBounds.centerY) {
+                    // Hit bottom paddle from above
                     this.y = pBounds.top - this.radius;
                     this.vy *= -1;
                 } else {
                     return;
                 }
 
+                // Apply horizontal deflection
                 const hitPos = (this.x - paddle.x) / (paddle.width / 2);
                 this.vx += hitPos * 2;
-                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy) || 1;
-                this.vx = (this.vx / currentSpeed) * this.gameSpeed;
-                this.vy = (this.vy / currentSpeed) * this.gameSpeed;
                 this._onBounce();
             }
         }
