@@ -217,16 +217,20 @@ export class Wall {
         this.lastImpactCol = hitC;
         this.lastImpactCoord = { row: hitR, col: hitC };
 
-        // Record hit brick type so external systems can react after removal
+        // Record hit brick type so external systems can react after removal (even if inert)
         this.lastHitBrickType = hitBrick.type || null;
         this.lastHitBrickCoord = { row: hitR, col: hitC };
 
-        // If the brick is inert to hits coming from the same side, ignore the removal.
-        // The opponent may still remove it.
+        // If the brick is inert to hits coming from the same side, ignore removal and repairs.
+        // But special effects (like spawning extra balls) still happen.
         if (hitBrick.inertFromSide && hitBrick.inertFromSide === ballSide) {
             console.log(`Ignored hit on inert brick at ${hitC},${hitR} from side ${ballSide}`);
             this.lastAuditAdded = [];
             this.lastAuditRemoved = [];
+            // If this inert brick had a special type (eg. 'extraBall'), allow the special
+            // to trigger once (Game reads `lastHitBrickType`), then clear the type so it
+            // won't spawn repeatedly while remaining inert in-place.
+            if (hitBrick.type) hitBrick.type = null;
             return;
         }
 
