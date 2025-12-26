@@ -147,14 +147,6 @@ export class Game {
             this.scoreBottom++;
         }
         this.updateScoreDisplay();
-
-        // When someone scores, remove extra balls on the side that lost so each point is fair
-        if (winner === 'top') {
-            // top scored -> bottom lost
-            this.ballsBottom = this.ballsBottom.filter(b => !b.isExtra);
-        } else {
-            this.ballsTop = this.ballsTop.filter(b => !b.isExtra);
-        }
     }
 
     onWallHit(ball) {
