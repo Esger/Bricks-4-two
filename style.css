@@ -73,10 +73,14 @@ html {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
     z-index: 10;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.overlay.rotate-180 {
+    transform: rotate(180deg);
 }
 
 .overlay.hidden {

@@ -31,6 +31,7 @@ export class Game {
         this.aiThreshold = 10000; // 10 seconds in ms
         this.lastActionTop = 0;
         this.lastActionBottom = 0;
+        this.winData = null;
 
         // Initial launch on first tap on overlay
         this.onFirstTap = () => {
@@ -177,6 +178,8 @@ export class Game {
         this.lastActionBottom = performance.now();
         this.isAiTop = false;
         this.isAiBottom = false;
+        this.winData = null;
+        this.overlay.classList.remove('rotate-180');
     }
 
     spawnExtraBall(side) {
@@ -260,12 +263,14 @@ export class Game {
 
         this.wall.update(this);
 
-        const wallWinner = this.wall.checkWin();
-        if (wallWinner) this.gameOver(wallWinner, 'The wall reached the end!');
+        const winResult = this.wall.checkWin();
+        if (winResult) this.gameOver(winResult, 'The wall reached the end!');
     }
 
-    gameOver(winner, reason) {
+    gameOver(winData, reason) {
         this.running = false;
+        this.winData = winData;
+        const winner = winData.winner;
         const winnerName = winner === 'top' ? 'RED' : 'BLUE';
         const winnerColor = winner === 'top' ? '#ff3e3e' : '#3e8dff';
 
@@ -275,6 +280,11 @@ export class Game {
         this.message.style.boxShadow = `0 0 20px ${winnerColor}44`;
 
         this.overlay.classList.remove('hidden');
+        if (winner === 'top') {
+            this.overlay.classList.add('rotate-180');
+        } else {
+            this.overlay.classList.remove('rotate-180');
+        }
         this.restartBtn.style.display = 'block';
         this.updateScoreDisplay();
 
@@ -323,8 +333,8 @@ export class Game {
     draw() {
         this.ctx.fillStyle = '#0d0d12';
         this.ctx.fillRect(0, 0, this.width, this.height);
-        if (!this.running) return;
 
+        // Mid-line (Base)
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
         this.ctx.setLineDash([10, 10]);
         this.ctx.beginPath();
@@ -332,6 +342,24 @@ export class Game {
         this.ctx.stroke(); this.ctx.setLineDash([]);
 
         this.wall.draw(this.ctx);
+
+        // Highlight winning brick if game over
+        if (this.winData && this.winData.brick) {
+            const b = this.winData.brick;
+            this.ctx.save();
+            this.ctx.shadowBlur = 20;
+            this.ctx.shadowColor = '#ffffff';
+            this.ctx.strokeStyle = '#ffffff';
+            this.ctx.lineWidth = 3;
+            const rx = b.canvasXPosition - b.width / 2;
+            const ry = b.canvasYPosition - b.height / 2;
+            this.ctx.beginPath();
+            if (this.ctx.roundRect) this.ctx.roundRect(rx, ry, b.width, b.height, 4);
+            else this.ctx.rect(rx, ry, b.width, b.height);
+            this.ctx.stroke();
+            this.ctx.restore();
+        }
+
         this.paddleTop.draw(this.ctx);
         this.paddleBottom.draw(this.ctx);
         for (const b of this.ballsTop) b.draw(this.ctx);

@@ -126,8 +126,8 @@ export class Wall {
 
     checkWin() {
         for (const b of this.activeBrickMap.values()) {
-            if (b.rowCoordinate <= this.topLimit) return 'bottom';
-            if (b.rowCoordinate >= this.bottomLimit) return 'top';
+            if (b.rowCoordinate <= this.topLimit) return { winner: 'bottom', brick: b };
+            if (b.rowCoordinate >= this.bottomLimit) return { winner: 'top', brick: b };
         }
         return null;
     }
