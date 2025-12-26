@@ -123,7 +123,19 @@ export class Ball {
             // Off-screen (Top)
             if (this.y + this.radius < 0) {
                 game.scorePoint('bottom');
+                // If other balls remain, remove only this one.
+                const others = game.ballsTop.filter(b => b !== this);
+                if (others.length > 0) {
+                    this.active = false;
+                    game.ballsTop = others;
+                    return;
+                }
+
+                // This was the last ball on the side — reset it for re-launch and make it primary
+                // so it won't be pruned as an inactive extra.
                 this.reset();
+                this.isExtra = false;
+                return;
             }
         } else {
             if (this.y + this.radius > pBounds.top && this.y - this.radius < pBounds.bottom) {
@@ -147,7 +159,19 @@ export class Ball {
             // Off-screen (Bottom)
             if (this.y - this.radius > gameHeight) {
                 game.scorePoint('top');
+                // If other balls remain, remove only this one.
+                const others = game.ballsBottom.filter(b => b !== this);
+                if (others.length > 0) {
+                    this.active = false;
+                    game.ballsBottom = others;
+                    return;
+                }
+
+                // This was the last ball on the side — reset it for re-launch and make it primary
+                // so it won't be pruned as an inactive extra.
                 this.reset();
+                this.isExtra = false;
+                return;
             }
         }
     }
