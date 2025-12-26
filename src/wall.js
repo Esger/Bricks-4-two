@@ -14,9 +14,9 @@ export class Brick {
         const staggerOffset = this.width / 2;
         const rowParity = Math.abs(this.rowCoordinate) % 2;
         const xOffset = (rowParity === 1) ? staggerOffset : 0;
-        // Round to integer CSS pixels to avoid sub-pixel rendering seams
-        this.canvasXPosition = Math.round((this.columnCoordinate * standardWidth) + xOffset);
-        this.canvasYPosition = Math.round(this.rowCoordinate * this.height);
+        // Do not round here to preserve exact connectivity and placement; round only during drawing if needed
+        this.canvasXPosition = (this.columnCoordinate * standardWidth) + xOffset;
+        this.canvasYPosition = this.rowCoordinate * this.height;
     }
 }
 
@@ -147,29 +147,37 @@ export class Wall {
         // Bricks at the very top/bottom rows become inert to hits from THEIR side only.
         // Top rows: row <= 4 (kept consistent with update() constraints)
         // Bottom rows: row >= floor (computed from canvas height)
-        const topLimit = 4;
-        const bottomLimit = Math.floor((this.canvas.clientHeight) / this.brickHeight) - 2;
+        this.topLimit = 4;
+        this.bottomLimit = Math.floor((this.canvas.clientHeight) / this.brickHeight) - 2;
         for (const b of this.activeBrickMap.values()) {
             // Protect bricks from the *far* side so the player closest to the wall can still remove them
-            if (b.rowCoordinate <= topLimit) b.inertFromSide = 'bottom';
-            else if (b.rowCoordinate >= bottomLimit) b.inertFromSide = 'top';
+            if (b.rowCoordinate <= this.topLimit) b.inertFromSide = 'bottom';
+            else if (b.rowCoordinate >= this.bottomLimit) b.inertFromSide = 'top';
             else b.inertFromSide = null;
         }
+    }
+
+    checkWin() {
+        // If any brick reaches the very end, that side has 'lost' (the pusher has won)
+        for (const b of this.activeBrickMap.values()) {
+            if (b.rowCoordinate <= this.topLimit) return 'bottom'; // Bottom player pushed a brick to the top
+            if (b.rowCoordinate >= this.bottomLimit) return 'top'; // Top player pushed a brick to the bottom
+        }
+        return null;
     }
 
     initializeWall() {
         this.activeBrickMap.clear();
         this.baselineMiddleRow = Math.round((this.canvas.clientHeight / 2) / this.brickHeight);
-        // Use CSS pixel width directly and fit an integer number of bricks to avoid cut-offs
+        // Fit an exact whole number of bricks into the visible screen width
         const screenW = this.canvas.clientWidth || 800;
-
-        // Determine how many whole bricks would fit at the maximum brick width,
-        const minBricks = Math.floor(screenW / this.maxBrickWidth);
-        this.brickWidth = Math.max(1, Math.floor(screenW / minBricks));
+        const columnsVisible = Math.max(1, Math.round(screenW / this.maxBrickWidth));
+        this.brickWidth = screenW / columnsVisible;
         this.columnSpacing = this.brickWidth;
 
-        this.masterMinCol = Math.floor(-150 / this.columnSpacing) - this.edgeBufferCols;
-        this.masterMaxCol = Math.ceil((screenW + 150) / this.columnSpacing) + this.edgeBufferCols;
+        this.masterMinCol = -this.edgeBufferCols;
+        this.masterMaxCol = (columnsVisible - 1) + this.edgeBufferCols;
+
         for (let c = this.masterMinCol; c <= this.masterMaxCol; c++) {
             // Baseline starts with normal bricks only; specials appear when the wall auto-repairs during gameplay
             this.addBrickAt(this.baselineMiddleRow, c, null);
@@ -191,8 +199,8 @@ export class Wall {
         // so players can't remove their own edge bricks while the wall is pressing against them.
         const topLimit = 4;
         const bottomLimit = Math.floor((this.canvas.clientHeight) / this.brickHeight) - 2;
-        if (b.rowCoordinate <= topLimit) { b.inertFromSide = 'bottom'; b.isOrphan = false; }
-        else if (b.rowCoordinate >= bottomLimit) { b.inertFromSide = 'top'; b.isOrphan = false; }
+        if (b.rowCoordinate <= this.topLimit) { b.inertFromSide = 'bottom'; b.isOrphan = false; }
+        else if (b.rowCoordinate >= this.bottomLimit) { b.inertFromSide = 'top'; b.isOrphan = false; }
 
         this.activeBrickMap.set(key, b);
 
@@ -295,8 +303,8 @@ export class Wall {
         if (this.isDebugPaused) return;
         const floor = Math.floor(game.height / this.brickHeight) - 2;
         for (const b of this.activeBrickMap.values()) {
-            if (b.rowCoordinate < 4) b.rowCoordinate = 4;
-            if (b.rowCoordinate > floor) b.rowCoordinate = floor;
+            if (b.rowCoordinate < this.topLimit) b.rowCoordinate = this.topLimit;
+            if (b.rowCoordinate > this.bottomLimit) b.rowCoordinate = this.bottomLimit;
             b.updateVisualPosition();
         }
 
@@ -367,11 +375,11 @@ export class Wall {
         ctx.save();
         ctx.shadowBlur = 10;
         for (const [key, b] of this.activeBrickMap.entries()) {
-            // Draw each brick slightly smaller to create a hairline gap between neighbors and avoid overlap
-            const drawW = Math.max(1, b.width - 1);
-            const drawH = Math.max(1, b.height - 1);
-            const rx = Math.round(b.canvasXPosition - (drawW / 2));
-            const ry = Math.round(b.canvasYPosition - (drawH / 2));
+            // Account for 1px stroke to prevent visual overlap while maintaining perfect geometric alignment
+            const drawW = b.width - 1;
+            const drawH = b.height - 1;
+            const rx = b.canvasXPosition - (drawW / 2);
+            const ry = b.canvasYPosition - (drawH / 2);
 
             // Visual treatment for special bricks
             if (b.type === 'extraBall') {

@@ -25,6 +25,14 @@ export class Game {
         // Helper: small chance special bricks will appear occasionally
         this._lastSpawnedExtraAt = 0;
 
+        // Initial launch on first tap on overlay
+        this.onFirstTap = () => {
+            if (!this.running) {
+                this.start();
+                this.overlay.removeEventListener('pointerdown', this.onFirstTap);
+            }
+        };
+
         this.resize();
         this.initUI();
         this.initInput();
@@ -87,6 +95,22 @@ export class Game {
 
     initUI() {
         this.updateScoreDisplay();
+        this.overlay = document.getElementById('overlay');
+        this.message = document.getElementById('message');
+        this.restartBtn = document.getElementById('restart-btn');
+
+        // Initially hide restart button for the "Tap to Start" splash
+        this.restartBtn.style.display = 'none';
+
+        this.restartBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.start();
+        });
+
+        // Use multiple events for maximum compatibility
+        this.overlay.addEventListener('click', this.onFirstTap);
+        this.overlay.addEventListener('pointerdown', this.onFirstTap);
+        this.overlay.style.cursor = 'pointer';
     }
 
     updateScoreDisplay() {
@@ -100,6 +124,9 @@ export class Game {
         this.scoreTop = 0;
         this.scoreBottom = 0;
         this.updateScoreDisplay();
+
+        this.overlay.classList.add('hidden');
+        this.restartBtn.style.display = 'none';
 
         this.paddleTop.reset();
         this.paddleBottom.reset();
@@ -174,6 +201,29 @@ export class Game {
         this.ballsBottom = this.ballsBottom.filter(b => !(b.isExtra && !b.active));
 
         this.wall.update(this);
+
+        // Check for win condition (wall reach far end)
+        const wallWinner = this.wall.checkWin();
+        if (wallWinner) {
+            this.gameOver(wallWinner, 'The wall reached the end!');
+        }
+    }
+
+    gameOver(winner, reason) {
+        this.running = false;
+        const winnerName = winner === 'top' ? 'RED' : 'BLUE';
+        const winnerColor = winner === 'top' ? '#ff3e3e' : '#3e8dff';
+
+        this.message.textContent = `${winnerName} WINS!`;
+        this.message.style.color = winnerColor;
+        this.message.style.borderColor = winnerColor;
+        this.message.style.boxShadow = `0 0 20px ${winnerColor}44`;
+
+        this.overlay.classList.remove('hidden');
+        this.restartBtn.style.display = 'block';
+
+        // Update score one last time if it was a ball loss
+        this.updateScoreDisplay();
     }
 
     draw() {

@@ -1,97 +1,147 @@
 :root {
-    --bg-color    : #0d0d12;
-    --glass-bg    : rgba(255, 255, 255, 0.05);
+    --bg-color: #0d0d12;
+    --glass-bg: rgba(255, 255, 255, 0.05);
     --glass-border: rgba(255, 255, 255, 0.1);
-    --accent-red  : #ff3e3e;
-    --accent-blue : #3e8dff;
-    --text-color  : #ffffff;
-    --font-main   : 'Inter', system-ui, -apple-system, sans-serif;
+    --accent-red: #ff3e3e;
+    --accent-blue: #3e8dff;
+    --text-color: #ffffff;
+    --font-main: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 * {
-    margin      : 0;
-    padding     : 0;
-    box-sizing  : border-box;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
     touch-action: none;
-    user-select : none;
+    user-select: none;
 }
 
 body,
 html {
-    width              : 100%;
-    height             : 100%;
-    overflow           : hidden;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
     /* Prevent overscroll chaining and navigation gestures */
     overscroll-behavior: none;
-    background-color   : var(--bg-color);
-    font-family        : var(--font-main);
-    color              : var(--text-color);
+    background-color: var(--bg-color);
+    font-family: var(--font-main);
+    color: var(--text-color);
 }
 
 #game-container {
-    position      : relative;
-    width         : 100vw;
+    position: relative;
+    width: 100vw;
     /* Use dynamic viewport height to avoid browser chrome overlapping content on mobile */
-    height        : 100dvh;
-    display       : flex;
+    height: 100dvh;
+    display: flex;
     flex-direction: column;
 }
 
 #game-canvas {
-    flex-grow   : 1;
-    width       : 100%;
-    height      : 100%;
-    cursor      : crosshair;
+    flex-grow: 1;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
     /* Ensure touch gestures are handled by the game and not used for browser navigation */
     touch-action: none;
 }
 
 .score-area {
-    height         : 40px;
-    display        : flex;
-    align-items    : center;
+    height: 40px;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    font-size      : 24px;
-    font-weight    : bold;
-    letter-spacing : 2px;
-    background     : var(--glass-bg);
+    font-size: 24px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    background: var(--glass-bg);
     backdrop-filter: blur(10px);
-    border-bottom  : 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--glass-border);
 }
 
 #score-bottom {
-    border-top   : 1px solid var(--glass-border);
+    border-top: 1px solid var(--glass-border);
     border-bottom: none;
 }
 
 .overlay {
-    position       : absolute;
-    top            : 0;
-    left           : 0;
-    width          : 100%;
-    height         : 100%;
-    display        : flex;
-    align-items    : center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    background     : rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
-    z-index        : 10;
-    transition     : opacity 0.3s ease;
+    z-index: 10;
+    transition: opacity 0.3s ease;
 }
 
 .overlay.hidden {
-    opacity       : 0;
+    opacity: 0;
     pointer-events: none;
 }
 
+.message-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+}
+
 .message {
-    padding      : 2rem 4rem;
-    background   : var(--glass-bg);
-    border       : 1px solid var(--glass-border);
+    padding: 2rem 4rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
     border-radius: 20px;
-    font-size    : 2rem;
-    text-shadow  : 0 0 10px rgba(255, 255, 255, 0.5);
-    animation    : pulse 2s infinite ease-in-out;
+    font-size: clamp(1.5rem, 5vw, 3rem);
+    text-align: center;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    color: #fff;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.overlay:not(.hidden) .message {
+    animation: pulse 2s infinite ease-in-out;
+}
+
+.restart-btn {
+    padding: 1rem 2.5rem;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: white;
+    background: linear-gradient(135deg, var(--accent-blue), #2c599d);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0;
+    transform: translateY(20px);
+    pointer-events: none;
+}
+
+.overlay:not(.hidden) .restart-btn {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+    transition-delay: 0.5s;
+}
+
+.restart-btn:hover {
+    transform: scale(1.05) translateY(-2px);
+    box-shadow: 0 6px 20px rgba(62, 141, 255, 0.4);
+    filter: brightness(1.1);
+}
+
+.restart-btn:active {
+    transform: scale(0.98);
 }
 
 @keyframes pulse {
@@ -99,11 +149,11 @@ html {
     0%,
     100% {
         transform: scale(1);
-        opacity  : 0.8;
+        opacity: 0.9;
     }
 
     50% {
-        transform: scale(1.05);
-        opacity  : 1;
+        transform: scale(1.02);
+        opacity: 1;
     }
 }
