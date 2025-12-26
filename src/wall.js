@@ -43,6 +43,9 @@ export class Wall {
         this.lastAuditAdded = [];
         this.lastAuditRemoved = [];
 
+        // Hit registry to prevent tunneling and simultaneous hit issues
+        this.pendingImpacts = new Map(); // Map of brickKey -> side
+
         this.setupTrainingControls();
         this.initializeWall();
     }
@@ -134,6 +137,7 @@ export class Wall {
 
     initializeWall() {
         this.activeBrickMap.clear();
+        this.pendingImpacts.clear();
         this.baselineMiddleRow = Math.round((this.canvas.clientHeight / 2) / this.brickHeight);
         const screenW = this.canvas.clientWidth || 800;
         const columnsVisible = Math.max(1, Math.round(screenW / this.maxBrickWidth));
@@ -146,7 +150,6 @@ export class Wall {
             this.addBrickAt(this.baselineMiddleRow, c, null);
         }
 
-        // Add the DEMO brick at the center
         const midCol = Math.floor((this.masterMinCol + this.masterMaxCol) / 2);
         const demoKey = `${midCol},${this.baselineMiddleRow}`;
         if (this.activeBrickMap.has(demoKey)) {
@@ -170,6 +173,7 @@ export class Wall {
         return true;
     }
 
+    // Process a single hit impact - now separated from detection
     processWallImpact(hitBrick, ballSide) {
         const preKeys = new Set(this.activeBrickMap.keys());
         const hitR = hitBrick.rowCoordinate;
@@ -218,6 +222,16 @@ export class Wall {
         this.lastAuditRemoved = [...preKeys].filter(k => !postKeys.has(k)).filter(k => k !== `${hitC},${hitR}`);
     }
 
+    resolvePendingImpacts() {
+        for (const [key, side] of this.pendingImpacts.entries()) {
+            const b = this.activeBrickMap.get(key);
+            if (b) {
+                this.processWallImpact(b, side);
+            }
+        }
+        this.pendingImpacts.clear();
+    }
+
     update(game) {
         if (this.isDebugPaused) return;
         for (const b of this.activeBrickMap.values()) {
@@ -233,19 +247,30 @@ export class Wall {
         let best = null, minPenetration = Infinity, bestPen = null;
         for (const b of this.activeBrickMap.values()) {
             const dx = ball.x - b.canvasXPosition, dy = ball.y - b.canvasYPosition;
-            const sX = (b.width / 2) + ball.radius + 2, sY = (b.height / 2) + ball.radius + 2;
+            const sX = (b.width / 2) + ball.radius + 1, sY = (b.height / 2) + ball.radius + 1;
+
             if (Math.abs(dx) <= sX && Math.abs(dy) <= sY) {
-                const movingTowards = (ball.side === 'top' && ball.vy > 0) || (ball.side === 'bottom' && ball.vy < 0);
-                const verticalOverlap = Math.abs(dy) < (ball.radius + 3);
+                // Determine if ball is moving TOWARDS the brick's center plane
+                const movingTowards = (ball.vy > 0 && dy < 0) || (ball.vy < 0 && dy > 0) ||
+                    (ball.vx > 0 && dx < 0) || (ball.vx < 0 && dx > 0);
+
                 const overlapX = sX - Math.abs(dx), overlapY = sY - Math.abs(dy);
-                if (movingTowards || verticalOverlap || overlapX > 0.5) {
-                    const penetration = Math.min(overlapX, overlapY);
-                    if (penetration < minPenetration) { minPenetration = penetration; best = b; bestPen = { dx, dy, overlapX, overlapY }; }
+                const penetration = Math.min(overlapX, overlapY);
+
+                if (movingTowards && penetration < minPenetration) {
+                    minPenetration = penetration;
+                    best = b;
+                    bestPen = { dx, dy, overlapX, overlapY };
                 }
             }
         }
         if (best) {
-            this.processWallImpact(best, ball.side);
+            const key = `${best.columnCoordinate},${best.rowCoordinate}`;
+            // Register hit to be resolved after all balls update
+            this.pendingImpacts.set(key, ball.side);
+            this.lastHitBrickType = best.type; // Set immediately for game logic
+
+            // Immediate bounce phản xạ
             if (bestPen.overlapX < bestPen.overlapY) {
                 ball.vx *= -1;
                 const ejectX = (best.width / 2) + ball.radius + 2;
@@ -281,7 +306,11 @@ export class Wall {
                 ctx.strokeStyle = b.isOrphan ? '#ff3e3e' : 'rgba(255,255,255,0.4)';
             }
 
-            if (b.inertFromSide) { ctx.fillStyle = 'rgba(200,200,200,0.08)'; ctx.strokeStyle = '#888888'; ctx.shadowColor = '#888888'; }
+            if (b.inertFromSide) {
+                ctx.fillStyle = 'rgba(200,200,200,0.08)';
+                ctx.strokeStyle = (b.inertFromSide === 'top') ? '#ff3e3e44' : '#3e8dff44';
+                ctx.shadowColor = 'transparent';
+            }
 
             ctx.lineWidth = (b.type) ? 2 : 1;
             ctx.beginPath();

@@ -253,6 +253,9 @@ export class Game {
         this.ballsTop = this.ballsTop.filter(b => !(b.isExtra && !b.active));
         this.ballsBottom = this.ballsBottom.filter(b => !(b.isExtra && !b.active));
 
+        // Resolve brick removals after all balls have updated their positions/bounces
+        this.wall.resolvePendingImpacts();
+
         // Update AI timers
         const currentTime = performance.now();
         if (!this.isAiTop && (currentTime - this.lastActionTop > this.aiThreshold)) {

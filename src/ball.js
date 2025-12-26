@@ -13,10 +13,8 @@ export class Ball {
         this.isExtra = false; // flag for spawned extra balls
 
         // Speed growth configuration
-        // Default max and growth factor; we'll compute a better dynamic max at launch.
-        // Slow the per-bounce growth slightly so speed-up feels smooth across device sizes.
         this.maxGameSpeed = 10;
-        this.bounceGrowthFactor = 0.035; // fraction of remaining gap to max applied per bounce (tunable)
+        this.bounceGrowthFactor = 0.035;
 
         this.reset();
     }
@@ -41,33 +39,21 @@ export class Ball {
         if (this.active) return;
 
         this.active = true;
-
-        // Direction from paddle center to tap point
         const dx = targetX - paddleX;
         const dy = targetY - (this.side === 'top' ? 20 : this.canvas.clientHeight - 20);
-
-        // Avoid divide-by-zero for extremely short taps
         const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+        const minSpeed = 2;
 
-        // This sets the speed for the life of this ball
-        const minSpeed = 2; // ensures very short taps still launch at playable speed
-
-        // Compute a reasonable maxGameSpeed from the current canvas height so
-        // small screens get a lower cap and large screens can go a bit faster.
-        // Range is clamped to [6, 12]. Adjust divisor to tune overall feel.
         const computedMax = Math.min(12, Math.max(6, Math.round(this.canvas.clientHeight / 80)));
         this.maxGameSpeed = computedMax;
 
         const maxSpeed = this.maxGameSpeed || 10;
         this.gameSpeed = Math.min(maxSpeed, Math.max(minSpeed, dist / 40));
 
-        // Normalize direction
         let nx = dx / dist;
         let ny = dy / dist;
 
-        // Clamp angle to be within 45°..135° (i.e., ensure vertical component magnitude >= horizontal)
         if (Math.abs(ny) < Math.abs(nx)) {
-            // Snap to the nearest 45° boundary while preserving signs
             ny = Math.sign(ny) * Math.abs(nx);
             const nlen = Math.hypot(nx, ny) || 1;
             nx /= nlen; ny /= nlen;
@@ -80,118 +66,94 @@ export class Ball {
     update(game) {
         if (!this.active) return;
 
-        this.x += this.vx;
-        this.y += this.vy;
+        // DYNAMIC SUB-STEPPING: Ensure no tunneling at high speeds
+        // We move in small increments and re-check velocity each time
+        const subSteps = Math.max(1, Math.ceil(this.gameSpeed / 2));
+        const dt = 1.0 / subSteps;
 
-        const gameWidth = game.width;
+        for (let s = 0; s < subSteps; s++) {
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+
+            // Bounce off left/right walls
+            if (this.x - this.radius < 0) {
+                this.x = this.radius;
+                this.vx *= -1;
+                this._onBounce();
+            } else if (this.x + this.radius > game.width) {
+                this.x = game.width - this.radius;
+                this.vx *= -1;
+                this._onBounce();
+            }
+
+            // Bounce off the middle wall (bricks)
+            // checkCollision will update this.vx/this.vy if a hit occurs
+            const wallHit = game.wall.checkCollision(this);
+            if (wallHit) {
+                this._onBounce();
+                if (game.onWallHit) game.onWallHit(this);
+            }
+        }
+
         const gameHeight = game.height;
-
-        // Bounce off left/right walls
-        if (this.x - this.radius < 0) {
-            this.x = this.radius;
-            this.vx *= -1;
-            this._onBounce();
-        } else if (this.x + this.radius > gameWidth) {
-            this.x = gameWidth - this.radius;
-            this.vx *= -1;
-            this._onBounce();
-        }
-
-        // Bounce off the middle wall (bricks)
-        const wallHit = game.wall.checkCollision(this);
-        if (wallHit) {
-            this._onBounce();
-            // Notify game so it can react to special bricks
-            if (game.onWallHit) game.onWallHit(this);
-        }
-
-        // Bounce off paddles or go off-screen
         const paddle = (this.side === 'top') ? game.paddleTop : game.paddleBottom;
-        const pBounds = paddle.getBounds();
+        const opponentPaddle = (this.side === 'top') ? game.paddleBottom : game.paddleTop;
 
-        if (this.side === 'top') {
-            if (this.y - this.radius < pBounds.bottom && this.y + this.radius > pBounds.top) {
-                if (this.x > pBounds.left && this.x < pBounds.right) {
+        // Check bounce for OWN paddle and OPPONENT paddle
+        this._checkPaddleBounce(paddle);
+        this._checkPaddleBounce(opponentPaddle);
+
+        // Unified Off-screen cleanup
+        let scoringWinner = null;
+        if (this.y + this.radius < -100) scoringWinner = 'bottom';
+        else if (this.y - this.radius > gameHeight + 100) scoringWinner = 'top';
+
+        if (scoringWinner) {
+            game.scorePoint(scoringWinner);
+            const ballArray = (this.side === 'top') ? game.ballsTop : game.ballsBottom;
+            const others = ballArray.filter(b => b !== this);
+
+            if (others.length > 0) {
+                this.active = false;
+                if (this.side === 'top') game.ballsTop = others;
+                else game.ballsBottom = others;
+            } else {
+                this.reset();
+                this.isExtra = false;
+            }
+        }
+    }
+
+    _checkPaddleBounce(paddle) {
+        const pBounds = paddle.getBounds();
+        if (this.x > pBounds.left && this.x < pBounds.right) {
+            if (this.y + this.radius > pBounds.top && this.y - this.radius < pBounds.bottom) {
+                // Determine eject direction
+                if (this.vy < 0 && this.y > pBounds.centerY) {
                     this.y = pBounds.bottom + this.radius;
                     this.vy *= -1;
-
-                    // Change direction based on where it hit the paddle
-                    const hitPos = (this.x - paddle.x) / (paddle.width / 2);
-                    this.vx += hitPos * 2;
-
-                    // RE-NORMALIZE TO THE LAUNCH SPEED
-                    const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                    this.vx = (this.vx / currentSpeed) * this.gameSpeed;
-                    this.vy = (this.vy / currentSpeed) * this.gameSpeed;
-
-                    this._onBounce();
-                }
-            }
-
-            // Off-screen (Top)
-            if (this.y + this.radius < 0) {
-                game.scorePoint('bottom');
-                // If other balls remain, remove only this one.
-                const others = game.ballsTop.filter(b => b !== this);
-                if (others.length > 0) {
-                    this.active = false;
-                    game.ballsTop = others;
-                    return;
-                }
-
-                // This was the last ball on the side — reset it for re-launch and make it primary
-                // so it won't be pruned as an inactive extra.
-                this.reset();
-                this.isExtra = false;
-                return;
-            }
-        } else {
-            if (this.y + this.radius > pBounds.top && this.y - this.radius < pBounds.bottom) {
-                if (this.x > pBounds.left && this.x < pBounds.right) {
+                } else if (this.vy > 0 && this.y < pBounds.centerY) {
                     this.y = pBounds.top - this.radius;
                     this.vy *= -1;
-
-                    // Change direction based on where it hit the paddle
-                    const hitPos = (this.x - paddle.x) / (paddle.width / 2);
-                    this.vx += hitPos * 2;
-
-                    // RE-NORMALIZE TO THE LAUNCH SPEED
-                    const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                    this.vx = (this.vx / currentSpeed) * this.gameSpeed;
-                    this.vy = (this.vy / currentSpeed) * this.gameSpeed;
-
-                    this._onBounce();
-                }
-            }
-
-            // Off-screen (Bottom)
-            if (this.y - this.radius > gameHeight) {
-                game.scorePoint('top');
-                // If other balls remain, remove only this one.
-                const others = game.ballsBottom.filter(b => b !== this);
-                if (others.length > 0) {
-                    this.active = false;
-                    game.ballsBottom = others;
+                } else {
                     return;
                 }
 
-                // This was the last ball on the side — reset it for re-launch and make it primary
-                // so it won't be pruned as an inactive extra.
-                this.reset();
-                this.isExtra = false;
-                return;
+                const hitPos = (this.x - paddle.x) / (paddle.width / 2);
+                this.vx += hitPos * 2;
+                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy) || 1;
+                this.vx = (this.vx / currentSpeed) * this.gameSpeed;
+                this.vy = (this.vy / currentSpeed) * this.gameSpeed;
+                this._onBounce();
             }
         }
     }
 
     _onBounce() {
-        // Increase game speed slightly towards the configured maximum using an asymptotic approach
         if (!this.gameSpeed) return;
         const maxSpeed = this.maxGameSpeed || 10;
         const growth = this.bounceGrowthFactor || 0.05;
         this.gameSpeed = Math.min(maxSpeed, this.gameSpeed + (maxSpeed - this.gameSpeed) * growth);
-
-        // Re-normalize velocity to the new gameSpeed
         const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy) || 1;
         this.vx = (this.vx / currentSpeed) * this.gameSpeed;
         this.vy = (this.vy / currentSpeed) * this.gameSpeed;
@@ -200,20 +162,15 @@ export class Ball {
     draw(ctx) {
         ctx.save();
         ctx.fillStyle = this.color;
-
         ctx.shadowBlur = 10;
         ctx.shadowColor = this.color;
-
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
-
-        // Highlight
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.beginPath();
         ctx.arc(this.x - 2, this.y - 2, this.radius / 3, 0, Math.PI * 2);
         ctx.fill();
-
         ctx.restore();
     }
 }
