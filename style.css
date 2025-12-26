@@ -64,6 +64,34 @@ html {
     border-bottom: none;
 }
 
+.tally-five {
+    position: relative;
+    display: inline-block;
+    margin: 0 8px;
+    letter-spacing: 2px;
+    font-family: monospace;
+    /* Monospace helps align the bars */
+}
+
+.tally-five::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: -4px;
+    width: calc(100% + 8px);
+    height: 3px;
+    background: currentColor;
+    transform: translateY(-50%) rotate(-30deg);
+    border-radius: 2px;
+    opacity: 0.9;
+}
+
+.tally-ones {
+    margin-left: 8px;
+    letter-spacing: 4px;
+    font-family: monospace;
+}
+
 .overlay {
     position: absolute;
     top: 0;

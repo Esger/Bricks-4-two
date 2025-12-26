@@ -151,15 +151,20 @@ export class Game {
 
     updateScoreDisplay() {
         const formatTally = (score) => {
-            if (score === 0) return '';
+            if (score <= 0) return '';
             const fives = Math.floor(score / 5);
             const ones = score % 5;
-            // 𝍸 (U+1D378) is the tally mark for five. 𝍷 (U+1D377) is for four, etc.
-            // Using a more standard representation: '卌' (U+534C) is widely supported for 5.
-            return '卌'.repeat(fives) + '|'.repeat(ones);
+            let html = '';
+            for (let i = 0; i < fives; i++) {
+                html += '<span class="tally-five">||||</span>';
+            }
+            if (ones > 0) {
+                html += '<span class="tally-ones">' + '|'.repeat(ones) + '</span>';
+            }
+            return html;
         };
-        document.getElementById('score-top').textContent = formatTally(this.matchesWonTop);
-        document.getElementById('score-bottom').textContent = formatTally(this.matchesWonBottom);
+        document.getElementById('score-top').innerHTML = formatTally(this.matchesWonTop);
+        document.getElementById('score-bottom').innerHTML = formatTally(this.matchesWonBottom);
     }
 
     start() {
