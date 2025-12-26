@@ -10,8 +10,8 @@ export class Game {
         this.height = 0;
         this.running = false;
 
-        this.scoreTop = 0;
-        this.scoreBottom = 0;
+        this.matchesWonTop = 0;
+        this.matchesWonBottom = 0;
 
         this.paddleTop = new Paddle(canvas, 'top', '#ff3e3e');
         this.paddleBottom = new Paddle(canvas, 'bottom', '#3e8dff');
@@ -150,15 +150,20 @@ export class Game {
     }
 
     updateScoreDisplay() {
-        const tally = (score) => '|'.repeat(score);
-        document.getElementById('score-top').textContent = tally(this.scoreTop);
-        document.getElementById('score-bottom').textContent = tally(this.scoreBottom);
+        const formatTally = (score) => {
+            if (score === 0) return '';
+            const fives = Math.floor(score / 5);
+            const ones = score % 5;
+            // 𝍸 (U+1D378) is the tally mark for five. 𝍷 (U+1D377) is for four, etc.
+            // Using a more standard representation: '卌' (U+534C) is widely supported for 5.
+            return '卌'.repeat(fives) + '|'.repeat(ones);
+        };
+        document.getElementById('score-top').textContent = formatTally(this.matchesWonTop);
+        document.getElementById('score-bottom').textContent = formatTally(this.matchesWonBottom);
     }
 
     start() {
         this.running = true;
-        this.scoreTop = 0;
-        this.scoreBottom = 0;
         this.updateScoreDisplay();
 
         this.overlay.classList.add('hidden');
@@ -207,14 +212,13 @@ export class Game {
     }
 
     scorePoint(winner) {
+        // Point scoring on ball-loss is now disabled in favor of Match Wins tally.
+        // We still trigger the timer update to allow for AI handoff.
         if (winner === 'top') {
-            this.scoreTop++;
-            this.lastActionBottom = performance.now(); // Reset AI timer for loser
+            this.lastActionBottom = performance.now();
         } else {
-            this.scoreBottom++;
-            this.lastActionTop = performance.now(); // Reset AI timer for loser
+            this.lastActionTop = performance.now();
         }
-        this.updateScoreDisplay();
     }
 
     onWallHit(ball) {
@@ -271,6 +275,11 @@ export class Game {
         this.running = false;
         this.winData = winData;
         const winner = winData.winner;
+
+        // Match Win increment
+        if (winner === 'top') this.matchesWonTop++;
+        else this.matchesWonBottom++;
+
         const winnerName = winner === 'top' ? 'RED' : 'BLUE';
         const winnerColor = winner === 'top' ? '#ff3e3e' : '#3e8dff';
 
