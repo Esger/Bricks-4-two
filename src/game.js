@@ -25,6 +25,12 @@ export class Game {
         // Helper: small chance special bricks will appear occasionally
         this._lastSpawnedExtraAt = 0;
 
+        // AI state
+        this.isAiTop = false;
+        this.isAiBottom = false;
+        this.lastResetTime = 0;
+        this.aiThreshold = 10000; // 10 seconds in ms
+
         // Initial launch on first tap on overlay
         this.onFirstTap = () => {
             if (!this.running) {
@@ -49,8 +55,10 @@ export class Game {
             // Upper half controls the top player; lower half controls the bottom player
             if (y >= this.height / 2) {
                 this.paddleBottom.moveTo(x);
+                this.isAiBottom = false; // Manually moving disables AI
             } else {
                 this.paddleTop.moveTo(x);
+                this.isAiTop = false; // Manually moving disables AI
             }
         };
 
@@ -71,9 +79,15 @@ export class Game {
             // Upper half launches a top-side ball; lower half launches a bottom-side ball
             if (y >= this.height / 2) {
                 // Launch primary bottom ball (first in array)
-                if (this.ballsBottom[0]) this.ballsBottom[0].launch(this.paddleBottom.x, x, y);
+                if (this.ballsBottom[0]) {
+                    this.ballsBottom[0].launch(this.paddleBottom.x, x, y);
+                    this.isAiBottom = false;
+                }
             } else {
-                if (this.ballsTop[0]) this.ballsTop[0].launch(this.paddleTop.x, x, y);
+                if (this.ballsTop[0]) {
+                    this.ballsTop[0].launch(this.paddleTop.x, x, y);
+                    this.isAiTop = false;
+                }
             }
         });
     }
@@ -138,6 +152,9 @@ export class Game {
         this.ballsBottom.forEach(b => b.reset());
 
         this.wall.initializeWall();
+        this.lastResetTime = performance.now();
+        this.isAiTop = false;
+        this.isAiBottom = false;
     }
 
     spawnExtraBall(side) {
@@ -200,6 +217,18 @@ export class Game {
         this.ballsTop = this.ballsTop.filter(b => !(b.isExtra && !b.active));
         this.ballsBottom = this.ballsBottom.filter(b => !(b.isExtra && !b.active));
 
+        // Update AI
+        const currentTime = performance.now();
+        const timeSinceReset = currentTime - this.lastResetTime;
+        if (timeSinceReset > this.aiThreshold) {
+            // Only take over if primary ball is NOT active (hasn't been launched)
+            if (this.ballsTop[0] && !this.ballsTop[0].active) this.isAiTop = true;
+            if (this.ballsBottom[0] && !this.ballsBottom[0].active) this.isAiBottom = true;
+        }
+
+        if (this.isAiTop) this.updateAI('top');
+        if (this.isAiBottom) this.updateAI('bottom');
+
         this.wall.update(this);
 
         // Check for win condition (wall reach far end)
@@ -224,6 +253,57 @@ export class Game {
 
         // Update score one last time if it was a ball loss
         this.updateScoreDisplay();
+
+        this.isAiTop = false;
+        this.isAiBottom = false;
+    }
+
+    updateAI(side) {
+        const paddle = (side === 'top') ? this.paddleTop : this.paddleBottom;
+        const balls = (side === 'top') ? this.ballsTop : this.ballsBottom;
+        const opponentBalls = (side === 'top') ? this.ballsBottom : this.ballsTop;
+
+        const primaryBall = balls[0];
+
+        // 1. Launch ball if inactive
+        if (primaryBall && !primaryBall.active) {
+            // Aim for a target area (center-ish)
+            const targetX = this.width / 2 + (Math.random() - 0.5) * 100;
+            const targetY = this.height / 2;
+            primaryBall.launch(paddle.x, targetX, targetY);
+            return;
+        }
+
+        // 2. Intercept incoming balls
+        // Sort balls by proximity to the paddle side in the direction of travel
+        const allBalls = [...balls, ...opponentBalls].filter(b => b.active);
+        const incomingBalls = allBalls.filter(b => {
+            if (side === 'top') return b.vy < 0; // Moving towards top
+            return b.vy > 0; // Moving towards bottom
+        });
+
+        if (incomingBalls.length > 0) {
+            // Pick ball that will hit first
+            incomingBalls.sort((a, b) => {
+                const distA = (side === 'top') ? a.y : this.height - a.y;
+                const distB = (side === 'top') ? b.y : this.height - b.y;
+                return distA - distB;
+            });
+
+            const targetBall = incomingBalls[0];
+
+            // Predict x position (simplified intercept)
+            let targetX = targetBall.x;
+
+            // Add some "aiming" logic: try to hit near the edge of paddle to deflect towards the wall-winner side
+            // For now, just aim to be centered on the ball
+            paddle.moveTo(targetX);
+        } else {
+            // Idle behavior: move towards screen center or primary ball
+            const idleX = primaryBall ? primaryBall.x : this.width / 2;
+            const targetX = paddle.x + (idleX - paddle.x) * 0.1;
+            paddle.moveTo(targetX);
+        }
     }
 
     draw() {
