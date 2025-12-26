@@ -194,6 +194,10 @@ export class Game {
     }
 
     onWallHit(ball) {
+        // AI-controlled players do not receive the benefit of special bricks
+        const isAiPlayer = (ball.side === 'top' ? this.isAiTop : this.isAiBottom);
+        if (isAiPlayer) return;
+
         // React to special bricks: if the recently hit brick was a special 'extraBall', spawn a new ball on the hitter's side
         const lastType = this.wall.lastHitBrickType;
         if (lastType === 'extraBall') {
@@ -267,9 +271,9 @@ export class Game {
 
         // 1. Launch ball if inactive
         if (primaryBall && !primaryBall.active) {
-            // Aim for a target area (center-ish)
+            // Aim very close to the paddle to ensure a 'soft' launch (minimum speed)
             const targetX = this.width / 2 + (Math.random() - 0.5) * 100;
-            const targetY = this.height / 2;
+            const targetY = (side === 'top') ? paddle.y + 10 : paddle.y - 10;
             primaryBall.launch(paddle.x, targetX, targetY);
             return;
         }
@@ -293,15 +297,15 @@ export class Game {
             const targetBall = incomingBalls[0];
 
             // Predict x position (simplified intercept)
-            let targetX = targetBall.x;
+            // Introduced a slight 'tracking delay' by lerping towards the ball
+            const trackingSpeed = 0.15; // 0..1 (how fast the AI tracks the ball)
+            let targetX = paddle.x + (targetBall.x - paddle.x) * trackingSpeed;
 
-            // Add some "aiming" logic: try to hit near the edge of paddle to deflect towards the wall-winner side
-            // For now, just aim to be centered on the ball
             paddle.moveTo(targetX);
         } else {
             // Idle behavior: move towards screen center or primary ball
             const idleX = primaryBall ? primaryBall.x : this.width / 2;
-            const targetX = paddle.x + (idleX - paddle.x) * 0.1;
+            const targetX = paddle.x + (idleX - paddle.x) * 0.05;
             paddle.moveTo(targetX);
         }
     }
