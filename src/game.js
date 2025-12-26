@@ -16,10 +16,14 @@ export class Game {
         this.paddleTop = new Paddle(canvas, 'top', '#ff3e3e');
         this.paddleBottom = new Paddle(canvas, 'bottom', '#3e8dff');
 
-        this.ballTop = new Ball(canvas, 'top', '#ff6b6b');
-        this.ballBottom = new Ball(canvas, 'bottom', '#6ba5ff');
+        // Support multiple balls per side
+        this.ballsTop = [new Ball(canvas, 'top', '#ff6b6b')];
+        this.ballsBottom = [new Ball(canvas, 'bottom', '#6ba5ff')];
 
         this.wall = new Wall(canvas);
+
+        // Helper: small chance special bricks will appear occasionally
+        this._lastSpawnedExtraAt = 0;
 
         this.resize();
         this.initUI();
@@ -56,11 +60,12 @@ export class Game {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            // Upper half can launch the top ball; lower half launches the bottom ball
+            // Upper half launches a top-side ball; lower half launches a bottom-side ball
             if (y >= this.height / 2) {
-                this.ballBottom.launch(this.paddleBottom.x, x, y);
+                // Launch primary bottom ball (first in array)
+                if (this.ballsBottom[0]) this.ballsBottom[0].launch(this.paddleBottom.x, x, y);
             } else {
-                this.ballTop.launch(this.paddleTop.x, x, y);
+                if (this.ballsTop[0]) this.ballsTop[0].launch(this.paddleTop.x, x, y);
             }
         });
     }
@@ -98,9 +103,41 @@ export class Game {
 
         this.paddleTop.reset();
         this.paddleBottom.reset();
-        this.ballTop.reset();
-        this.ballBottom.reset();
+
+        // Reset to one primary ball per side
+        this.ballsTop = [new Ball(this.canvas, 'top', '#ff6b6b')];
+        this.ballsBottom = [new Ball(this.canvas, 'bottom', '#6ba5ff')];
+        this.ballsTop.forEach(b => b.reset());
+        this.ballsBottom.forEach(b => b.reset());
+
         this.wall.initializeWall();
+    }
+
+    spawnExtraBall(side) {
+        const paddle = (side === 'top') ? this.paddleTop : this.paddleBottom;
+        const color = (side === 'top') ? '#ff6b6b' : '#6ba5ff';
+        const b = new Ball(this.canvas, side, color);
+        b.isExtra = true;
+
+        // Spawn just above/below paddle
+        b.x = paddle.x;
+        b.y = paddle.y + ((side === 'top') ? (paddle.height + b.radius + 4) : -(paddle.height + b.radius + 4));
+
+        // Give it an upward (from bottom) or downward (from top) initial velocity
+        const minLaunch = 2; // keep consistent with min launch speed used in Ball.launch
+        const primary = (side === 'top') ? this.ballsTop[0] : this.ballsBottom[0];
+        const baseSpeed = (primary && primary.gameSpeed) || minLaunch;
+        const initialSpeed = Math.max(minLaunch, Math.min(8, baseSpeed));
+        const vx = (Math.random() - 0.5) * 2; // small horizontal
+        const vy = (side === 'bottom') ? -Math.abs(initialSpeed) : Math.abs(initialSpeed);
+        const len = Math.hypot(vx, vy) || 1;
+        b.vx = (vx / len) * initialSpeed;
+        b.vy = (vy / len) * initialSpeed;
+        b.gameSpeed = initialSpeed;
+        b.active = true;
+
+        if (side === 'top') this.ballsTop.push(b);
+        else this.ballsBottom.push(b);
     }
 
     scorePoint(winner) {
@@ -113,8 +150,12 @@ export class Game {
     }
 
     onWallHit(ball) {
-        // Placeholder for brick displacement logic
-        console.log('Wall hit by', ball.side);
+        // React to special bricks: if the recently hit brick was a special 'extraBall', spawn a new ball on the hitter's side
+        const lastType = this.wall.lastHitBrickType;
+        if (lastType === 'extraBall') {
+            console.log('Special brick hit! Spawning extra ball for', ball.side);
+            this.spawnExtraBall(ball.side);
+        }
     }
 
     update(now) {
@@ -124,8 +165,14 @@ export class Game {
         // Escape key toggles this state in wall.js
         if (this.wall.isDebugPaused) return;
 
-        this.ballTop.update(this);
-        this.ballBottom.update(this);
+        // Update all balls
+        for (const b of this.ballsTop) b.update(this);
+        for (const b of this.ballsBottom) b.update(this);
+
+        // Remove inactive extra balls to avoid accumulation
+        this.ballsTop = this.ballsTop.filter(b => !(b.isExtra && !b.active));
+        this.ballsBottom = this.ballsBottom.filter(b => !(b.isExtra && !b.active));
+
         this.wall.update(this);
     }
 
@@ -153,7 +200,7 @@ export class Game {
         this.paddleBottom.draw(this.ctx);
 
         // Draw balls
-        this.ballTop.draw(this.ctx);
-        this.ballBottom.draw(this.ctx);
+        for (const b of this.ballsTop) b.draw(this.ctx);
+        for (const b of this.ballsBottom) b.draw(this.ctx);
     }
 }

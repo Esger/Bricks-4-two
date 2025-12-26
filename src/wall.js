@@ -5,6 +5,7 @@ export class Brick {
         this.width = width || 60;
         this.height = height;
         this.isOrphan = false;
+        this.inertFromSide = null; // null | 'top' | 'bottom' — bricks at the very edge become inert to hits from their own side
         this.updateVisualPosition();
     }
 
@@ -30,6 +31,15 @@ export class Wall {
         // Number of extra brick columns to add beyond the visible canvas on each side
         this.edgeBufferCols = 1;
         this.activeBrickMap = new Map();
+
+        // Special brick config
+        // Specials only appear when the wall auto-fills/repairs; they do NOT spawn on their own
+        this.specialOnRepairChance = 0.06; // chance that an auto-added repair brick is special
+        this.specialBorder = '#00ff88'; // visual border color for special bricks
+        // Cooldown bounds kept for compatibility with earlier logic (not used for autonomous spawns)
+        this.specialCooldownMin = 60;
+        this.specialCooldownMax = 300;
+        this.specialCooldown = 0; // frames until we may attempt another special spawn (kept for future use)
 
         // --- ANCHOR STATE ---
         this.masterMinCol = 0;
@@ -129,7 +139,22 @@ export class Wall {
         }
 
         // Connectivity is only TRUE if we reached the master max column
-        return bricks.some(b => b.columnCoordinate >= this.masterMaxCol && !b.isOrphan);
+        const result = bricks.some(b => b.columnCoordinate >= this.masterMaxCol && !b.isOrphan);
+        return result;
+    }
+
+    updateInertFlags() {
+        // Bricks at the very top/bottom rows become inert to hits from THEIR side only.
+        // Top rows: row <= 4 (kept consistent with update() constraints)
+        // Bottom rows: row >= floor (computed from canvas height)
+        const topLimit = 4;
+        const bottomLimit = Math.floor((this.canvas.clientHeight) / this.brickHeight) - 2;
+        for (const b of this.activeBrickMap.values()) {
+            // Protect bricks from the *far* side so the player closest to the wall can still remove them
+            if (b.rowCoordinate <= topLimit) b.inertFromSide = 'bottom';
+            else if (b.rowCoordinate >= bottomLimit) b.inertFromSide = 'top';
+            else b.inertFromSide = null;
+        }
     }
 
     initializeWall() {
@@ -145,14 +170,41 @@ export class Wall {
 
         this.masterMinCol = Math.floor(-150 / this.columnSpacing) - this.edgeBufferCols;
         this.masterMaxCol = Math.ceil((screenW + 150) / this.columnSpacing) + this.edgeBufferCols;
-        for (let c = this.masterMinCol; c <= this.masterMaxCol; c++) this.addBrickAt(this.baselineMiddleRow, c);
+        for (let c = this.masterMinCol; c <= this.masterMaxCol; c++) {
+            // Baseline starts with normal bricks only; specials appear when the wall auto-repairs during gameplay
+            this.addBrickAt(this.baselineMiddleRow, c, null);
+        }
         this.analyzeTopology();
+        this.updateInertFlags();
+
+        // Special-brick spawn cooldown setup
+        this.specialCooldown = Math.floor(this.specialCooldownMin + Math.random() * (this.specialCooldownMax - this.specialCooldownMin)); // frames until possible next spawn
     }
 
-    addBrickAt(row, col) {
+    addBrickAt(row, col, type = null) {
         const key = `${col},${row}`;
         if (this.activeBrickMap.has(key)) return false;
-        this.activeBrickMap.set(key, new Brick(row, col, this.brickHeight, this.brickWidth));
+        const b = new Brick(row, col, this.brickHeight, this.brickWidth);
+        b.type = type; // e.g. 'extraBall'
+
+        // If the brick is spawned at the very top or very bottom rows, mark it inert for that side immediately
+        // so players can't remove their own edge bricks while the wall is pressing against them.
+        const topLimit = 4;
+        const bottomLimit = Math.floor((this.canvas.clientHeight) / this.brickHeight) - 2;
+        if (b.rowCoordinate <= topLimit) { b.inertFromSide = 'bottom'; b.isOrphan = false; }
+        else if (b.rowCoordinate >= bottomLimit) { b.inertFromSide = 'top'; b.isOrphan = false; }
+
+        this.activeBrickMap.set(key, b);
+
+        // If a repair added bricks beyond the current master bounds, expand the bounds
+        // so topology checks and connectivity logic include the newly extended wall.
+        let changed = false;
+        if (typeof this.masterMinCol === 'number' && col < this.masterMinCol) { this.masterMinCol = col; changed = true; }
+        if (typeof this.masterMaxCol === 'number' && col > this.masterMaxCol) { this.masterMaxCol = col; changed = true; }
+        if (changed) console.log(`Expanded master bounds to [${this.masterMinCol}, ${this.masterMaxCol}] due to add at col ${col}`);
+        // Update inert flags for bricks that may have moved to an edge row
+        this.updateInertFlags();
+
         return true;
     }
 
@@ -165,13 +217,33 @@ export class Wall {
         this.lastImpactCol = hitC;
         this.lastImpactCoord = { row: hitR, col: hitC };
 
+        // Record hit brick type so external systems can react after removal (even if inert)
+        this.lastHitBrickType = hitBrick.type || null;
+        this.lastHitBrickCoord = { row: hitR, col: hitC };
+
+        // If the brick is inert to hits coming from the same side, ignore removal and repairs.
+        // But special effects (like spawning extra balls) still happen.
+        if (hitBrick.inertFromSide && hitBrick.inertFromSide === ballSide) {
+            console.log(`Ignored hit on inert brick at ${hitC},${hitR} from side ${ballSide}`);
+            this.lastAuditAdded = [];
+            this.lastAuditRemoved = [];
+            // If this inert brick had a special type (eg. 'extraBall'), allow the special
+            // to trigger once (Game reads `lastHitBrickType`), then clear the type so it
+            // won't spawn repeatedly while remaining inert in-place.
+            if (hitBrick.type) hitBrick.type = null;
+            return;
+        }
+
         // STEP 1: Remove hit brick immediately.
         this.activeBrickMap.delete(`${hitC},${hitR}`);
 
         // STEP 2: check connectivity (must reach MASTER boundaries).
         let isConnected = this.analyzeTopology();
 
-        if (!isConnected && !hitBrick.isOrphan) {
+        // Try repairs even when the removed brick was previously marked as an orphan.
+        // Orphaned bricks should react like normal bricks when hit: they disappear and we
+        // attempt masonry repairs to preserve connectivity.
+        if (!isConnected) {
             // MVR MODE (Individual Trials)
             const neighbors = this.getMasonryNeighbors(hitR, hitC);
             const mortarCandidates = neighbors.filter(([nr, nc]) => nr === (hitR + delta));
@@ -188,7 +260,9 @@ export class Wall {
                 const key = `${cc},${cr}`;
                 if (this.activeBrickMap.has(key)) continue;
 
-                this.addBrickAt(cr, cc);
+                // Small chance the trial brick becomes a special extraBall (only when auto-adding)
+                const t = (Math.random() < (this.specialOnRepairChance || 0.06)) ? 'extraBall' : null;
+                this.addBrickAt(cr, cc, t);
                 isConnected = this.analyzeTopology();
                 if (isConnected) break; // First individual success wins
                 else this.activeBrickMap.delete(key); // Discard non-repairing clutter
@@ -197,7 +271,8 @@ export class Wall {
             // B. Trial collective fallback
             if (!isConnected) {
                 for (const [cr, cc] of candidates) {
-                    this.addBrickAt(cr, cc);
+                    const t = (Math.random() < (this.specialOnRepairChance || 0.06)) ? 'extraBall' : null;
+                    this.addBrickAt(cr, cc, t);
                     isConnected = this.analyzeTopology();
                     if (isConnected) break;
                 }
@@ -207,6 +282,9 @@ export class Wall {
         if (!isConnected) {
             console.error("STRUCTURAL INTEGRITY ERROR: Boundary path severed.");
         }
+
+        // Update inert flags after any auto-repair additions
+        this.updateInertFlags();
 
         const postKeys = new Set(this.activeBrickMap.keys());
         this.lastAuditAdded = [...postKeys].filter(k => !preKeys.has(k));
@@ -221,6 +299,12 @@ export class Wall {
             if (b.rowCoordinate > floor) b.rowCoordinate = floor;
             b.updateVisualPosition();
         }
+
+        // Refresh inert flags after we constrained rows
+        this.updateInertFlags();
+
+        // No autonomous special spawning here — specials are only created when the wall auto-repairs to keep connectivity intact
+        // (This keeps specials tied to gameplay actions.)
     }
 
     checkCollision(ball) {
@@ -289,7 +373,12 @@ export class Wall {
             const rx = Math.round(b.canvasXPosition - (drawW / 2));
             const ry = Math.round(b.canvasYPosition - (drawH / 2));
 
-            if (this.isDebugPaused) {
+            // Visual treatment for special bricks
+            if (b.type === 'extraBall') {
+                ctx.shadowColor = b.isOrphan ? '#ff3e3e' : this.specialBorder || '#00ff88';
+                ctx.fillStyle = b.isOrphan ? 'rgba(255, 62, 62, 0.3)' : 'rgba(0, 200, 80, 0.12)';
+                ctx.strokeStyle = this.specialBorder || '#00ff88';
+            } else if (this.isDebugPaused) {
                 const isAutoAdd = this.lastAuditAdded.includes(key);
                 if (isAutoAdd) {
                     ctx.shadowColor = '#00d0ff'; ctx.fillStyle = 'rgba(0, 208, 255, 0.4)'; ctx.strokeStyle = '#00d0ff';
@@ -303,11 +392,30 @@ export class Wall {
                 ctx.fillStyle = b.isOrphan ? 'rgba(255, 62, 62, 0.2)' : 'rgba(255,255,255,0.15)';
                 ctx.strokeStyle = b.isOrphan ? '#ff3e3e' : 'rgba(255,255,255,0.4)';
             }
-            ctx.lineWidth = 1;
+
+            // If brick is inert to its own side, desaturate its appearance slightly so it's visually distinct
+            if (b.inertFromSide) {
+                ctx.fillStyle = 'rgba(200,200,200,0.08)';
+                ctx.strokeStyle = '#888888';
+                ctx.shadowColor = '#888888';
+            }
+
+            ctx.lineWidth = (b.type === 'extraBall') ? 2 : 1;
             ctx.beginPath();
             if (ctx.roundRect) ctx.roundRect(rx, ry, drawW, drawH, 4);
             else ctx.rect(rx, ry, drawW, drawH);
             ctx.fill(); ctx.stroke();
+
+            // Draw center icon for special bricks
+            if (b.type === 'extraBall') {
+                ctx.save();
+                ctx.fillStyle = '#3ac47d';
+                const r = Math.min(6, drawH / 3, drawW / 3);
+                ctx.beginPath();
+                ctx.arc(b.canvasXPosition, b.canvasYPosition, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
         }
 
         if (this.isDebugPaused) {

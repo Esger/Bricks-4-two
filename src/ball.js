@@ -10,11 +10,13 @@ export class Ball {
         this.vx = 0;
         this.vy = 0;
         this.active = false;
+        this.isExtra = false; // flag for spawned extra balls
 
         // Speed growth configuration
+        // Default max and growth factor; we'll compute a better dynamic max at launch.
+        // Slow the per-bounce growth slightly so speed-up feels smooth across device sizes.
         this.maxGameSpeed = 10;
-        // Slow the per-bounce asymptotic growth so speed increases gently during long rallies
-        this.bounceGrowthFactor = 0.015; // fraction of remaining gap to max applied per bounce
+        this.bounceGrowthFactor = 0.035; // fraction of remaining gap to max applied per bounce (tunable)
 
         this.reset();
     }
@@ -49,7 +51,14 @@ export class Ball {
 
         // This sets the speed for the life of this ball
         const minSpeed = 2; // ensures very short taps still launch at playable speed
-        const maxSpeed = 10;
+
+        // Compute a reasonable maxGameSpeed from the current canvas height so
+        // small screens get a lower cap and large screens can go a bit faster.
+        // Range is clamped to [6, 12]. Adjust divisor to tune overall feel.
+        const computedMax = Math.min(12, Math.max(6, Math.round(this.canvas.clientHeight / 80)));
+        this.maxGameSpeed = computedMax;
+
+        const maxSpeed = this.maxGameSpeed || 10;
         this.gameSpeed = Math.min(maxSpeed, Math.max(minSpeed, dist / 40));
 
         // Normalize direction
@@ -89,8 +98,11 @@ export class Ball {
         }
 
         // Bounce off the middle wall (bricks)
-        if (game.wall.checkCollision(this)) {
+        const wallHit = game.wall.checkCollision(this);
+        if (wallHit) {
             this._onBounce();
+            // Notify game so it can react to special bricks
+            if (game.onWallHit) game.onWallHit(this);
         }
 
         // Bounce off paddles or go off-screen
@@ -119,7 +131,19 @@ export class Ball {
             // Off-screen (Top)
             if (this.y + this.radius < 0) {
                 game.scorePoint('bottom');
+                // If other balls remain, remove only this one.
+                const others = game.ballsTop.filter(b => b !== this);
+                if (others.length > 0) {
+                    this.active = false;
+                    game.ballsTop = others;
+                    return;
+                }
+
+                // This was the last ball on the side — reset it for re-launch and make it primary
+                // so it won't be pruned as an inactive extra.
                 this.reset();
+                this.isExtra = false;
+                return;
             }
         } else {
             if (this.y + this.radius > pBounds.top && this.y - this.radius < pBounds.bottom) {
@@ -143,7 +167,19 @@ export class Ball {
             // Off-screen (Bottom)
             if (this.y - this.radius > gameHeight) {
                 game.scorePoint('top');
+                // If other balls remain, remove only this one.
+                const others = game.ballsBottom.filter(b => b !== this);
+                if (others.length > 0) {
+                    this.active = false;
+                    game.ballsBottom = others;
+                    return;
+                }
+
+                // This was the last ball on the side — reset it for re-launch and make it primary
+                // so it won't be pruned as an inactive extra.
                 this.reset();
+                this.isExtra = false;
+                return;
             }
         }
     }
