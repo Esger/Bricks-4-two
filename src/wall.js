@@ -313,12 +313,11 @@ export class Wall {
                 ctx.shadowBlur = 10; ctx.shadowColor = '#00d0ff';
                 ctx.fillStyle = 'rgba(0, 208, 255, 0.2)'; ctx.strokeStyle = '#00d0ff';
             } else if (b.type === 'extraBall') {
-                ctx.shadowBlur = 8; ctx.shadowColor = b.isOrphan ? '#ff3e3e' : '#00ff88';
+                ctx.shadowBlur = 8; ctx.shadowColor = '#00ff88';
                 ctx.fillStyle = 'rgba(0, 200, 80, 0.12)'; ctx.strokeStyle = '#00ff88';
             } else {
-                ctx.fillStyle = b.isOrphan ? 'rgba(255, 62, 62, 0.2)' : 'rgba(255,255,255,0.15)';
-                ctx.strokeStyle = b.isOrphan ? '#ff3e3e' : 'rgba(255,255,255,0.4)';
-                if (b.isOrphan) { ctx.shadowBlur = 10; ctx.shadowColor = '#ff3e3e'; }
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
             }
 
             if (b.inertFromSide) {
@@ -327,7 +326,7 @@ export class Wall {
                 ctx.strokeStyle = (b.inertFromSide === 'top') ? '#ff3e3e44' : '#3e8dff44';
             }
 
-            ctx.lineWidth = (b.type || b.isOrphan) ? 2 : 1;
+            ctx.lineWidth = (b.type) ? 2 : 1;
             ctx.beginPath();
             if (ctx.roundRect) ctx.roundRect(rx, ry, drawW, drawH, 4);
             else ctx.rect(rx, ry, drawW, drawH);
