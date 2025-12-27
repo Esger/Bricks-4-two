@@ -244,33 +244,46 @@ export class Wall {
 
     checkCollision(ball) {
         if (this.isDebugPaused) return false;
+
+        // OPTIMIZATION: Spatial Grid Lookup
+        // Instead of checking ALL bricks, we only check the ones immediately around the ball coordinate.
+        const estRow = Math.round(ball.y / this.brickHeight);
+
+        // Search a 3x3 neighborhood around the estimated position
         let best = null, minPenetration = Infinity, bestPen = null;
-        for (const b of this.activeBrickMap.values()) {
-            const dx = ball.x - b.canvasXPosition, dy = ball.y - b.canvasYPosition;
-            const sX = (b.width / 2) + ball.radius + 1, sY = (b.height / 2) + ball.radius + 1;
 
-            if (Math.abs(dx) <= sX && Math.abs(dy) <= sY) {
-                // Determine if ball is moving TOWARDS the brick's center plane
-                const movingTowards = (ball.vy > 0 && dy < 0) || (ball.vy < 0 && dy > 0) ||
-                    (ball.vx > 0 && dx < 0) || (ball.vx < 0 && dx > 0);
+        for (let r = estRow - 1; r <= estRow + 1; r++) {
+            const xShift = (Math.abs(r) % 2 === 1) ? (this.brickWidth / 2) : 0;
+            const estCol = Math.round((ball.x - xShift) / this.brickWidth);
 
-                const overlapX = sX - Math.abs(dx), overlapY = sY - Math.abs(dy);
-                const penetration = Math.min(overlapX, overlapY);
+            for (let c = estCol - 1; c <= estCol + 1; c++) {
+                const b = this.activeBrickMap.get(`${c},${r}`);
+                if (!b) continue;
 
-                if (movingTowards && penetration < minPenetration) {
-                    minPenetration = penetration;
-                    best = b;
-                    bestPen = { dx, dy, overlapX, overlapY };
+                const dx = ball.x - b.canvasXPosition, dy = ball.y - b.canvasYPosition;
+                const sX = (b.width / 2) + ball.radius + 1, sY = (b.height / 2) + ball.radius + 1;
+
+                if (Math.abs(dx) <= sX && Math.abs(dy) <= sY) {
+                    const movingTowards = (ball.vy > 0 && dy < 0) || (ball.vy < 0 && dy > 0) ||
+                        (ball.vx > 0 && dx < 0) || (ball.vx < 0 && dx > 0);
+
+                    const overlapX = sX - Math.abs(dx), overlapY = sY - Math.abs(dy);
+                    const penetration = Math.min(overlapX, overlapY);
+
+                    if (movingTowards && penetration < minPenetration) {
+                        minPenetration = penetration;
+                        best = b;
+                        bestPen = { dx, dy, overlapX, overlapY };
+                    }
                 }
             }
         }
+
         if (best) {
             const key = `${best.columnCoordinate},${best.rowCoordinate}`;
-            // Register hit to be resolved after all balls update
             this.pendingImpacts.set(key, ball.side);
-            this.lastHitBrickType = best.type; // Set immediately for game logic
+            this.lastHitBrickType = best.type;
 
-            // Immediate bounce phản xạ
             if (bestPen.overlapX < bestPen.overlapY) {
                 ball.vx *= -1;
                 const ejectX = (best.width / 2) + ball.radius + 2;
@@ -280,10 +293,6 @@ export class Wall {
                 const ejectY = (best.height / 2) + ball.radius + 2;
                 ball.y = best.canvasYPosition + (ball.vy > 0 ? ejectY : -ejectY);
             }
-            if (ball.gameSpeed) {
-                const s = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy) || 1;
-                ball.vx = (ball.vx / s) * ball.gameSpeed; ball.vy = (ball.vy / s) * ball.gameSpeed;
-            }
             return true;
         }
         return false;
@@ -291,38 +300,48 @@ export class Wall {
 
     draw(ctx) {
         ctx.save();
-        ctx.shadowBlur = 10;
+
+        // Shadows are EXPENSIVE on slower mobile devices. 
+        // We only enable them for special bricks to keep draw calls fast.
         for (const b of this.activeBrickMap.values()) {
             const drawW = b.width - 1, drawH = b.height - 1;
             const rx = b.canvasXPosition - (drawW / 2), ry = b.canvasYPosition - (drawH / 2);
 
+            ctx.shadowBlur = 0; // Default off
+
             if (b.type === 'demo') {
-                ctx.shadowColor = '#00d0ff'; ctx.fillStyle = 'rgba(0, 208, 255, 0.2)'; ctx.strokeStyle = '#00d0ff';
+                ctx.shadowBlur = 10; ctx.shadowColor = '#00d0ff';
+                ctx.fillStyle = 'rgba(0, 208, 255, 0.2)'; ctx.strokeStyle = '#00d0ff';
             } else if (b.type === 'extraBall') {
-                ctx.shadowColor = b.isOrphan ? '#ff3e3e' : '#00ff88'; ctx.fillStyle = 'rgba(0, 200, 80, 0.12)'; ctx.strokeStyle = '#00ff88';
+                ctx.shadowBlur = 8; ctx.shadowColor = b.isOrphan ? '#ff3e3e' : '#00ff88';
+                ctx.fillStyle = 'rgba(0, 200, 80, 0.12)'; ctx.strokeStyle = '#00ff88';
             } else {
-                ctx.shadowColor = b.isOrphan ? '#ff3e3e' : 'rgba(255,255,255,0.3)';
                 ctx.fillStyle = b.isOrphan ? 'rgba(255, 62, 62, 0.2)' : 'rgba(255,255,255,0.15)';
                 ctx.strokeStyle = b.isOrphan ? '#ff3e3e' : 'rgba(255,255,255,0.4)';
+                if (b.isOrphan) { ctx.shadowBlur = 10; ctx.shadowColor = '#ff3e3e'; }
             }
 
             if (b.inertFromSide) {
+                ctx.shadowBlur = 0;
                 ctx.fillStyle = 'rgba(200,200,200,0.08)';
                 ctx.strokeStyle = (b.inertFromSide === 'top') ? '#ff3e3e44' : '#3e8dff44';
-                ctx.shadowColor = 'transparent';
             }
 
-            ctx.lineWidth = (b.type) ? 2 : 1;
+            ctx.lineWidth = (b.type || b.isOrphan) ? 2 : 1;
             ctx.beginPath();
             if (ctx.roundRect) ctx.roundRect(rx, ry, drawW, drawH, 4);
             else ctx.rect(rx, ry, drawW, drawH);
             ctx.fill(); ctx.stroke();
 
-            if (b.type === 'demo') {
-                ctx.fillStyle = '#00d0ff'; ctx.font = 'bold 10px Montserrat'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText("DEMO", b.canvasXPosition, b.canvasYPosition);
-            } else if (b.type === 'extraBall') {
-                ctx.fillStyle = '#3ac47d'; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 4, 0, Math.PI * 2); ctx.fill();
+            // Clean up shadow for text/circles
+            if (b.type) {
+                ctx.shadowBlur = 0;
+                if (b.type === 'demo') {
+                    ctx.fillStyle = '#00d0ff'; ctx.font = 'bold 10px Montserrat'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText("DEMO", b.canvasXPosition, b.canvasYPosition);
+                } else if (b.type === 'extraBall') {
+                    ctx.fillStyle = '#3ac47d'; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 4, 0, Math.PI * 2); ctx.fill();
+                }
             }
         }
         ctx.restore();
