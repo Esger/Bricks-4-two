@@ -15,7 +15,8 @@ export class Brick {
         const staggerOffset = this.width / 2;
         const rowParity = Math.abs(this.rowCoordinate) % 2;
         const xOffset = (rowParity === 1) ? staggerOffset : 0;
-        this.canvasXPosition = (this.columnCoordinate * standardWidth) + xOffset;
+        // Center so column 0 starts at 0 (without stagger)
+        this.canvasXPosition = (this.columnCoordinate * standardWidth) + xOffset + (standardWidth / 2);
         this.canvasYPosition = this.rowCoordinate * this.height;
     }
 }
@@ -265,6 +266,11 @@ export class Wall {
 
     draw(ctx) {
         ctx.save();
+
+        // Clip to canvas to prevent "peeking" buffer bricks
+        ctx.beginPath();
+        ctx.rect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
+        ctx.clip();
 
         // Shadows are EXPENSIVE on slower mobile devices. 
         // We only enable them for special bricks to keep draw calls fast.
