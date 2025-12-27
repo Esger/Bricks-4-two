@@ -336,8 +336,8 @@ export class Wall {
             if (b.type) {
                 ctx.shadowBlur = 0;
                 if (b.type === 'demo') {
-                    ctx.fillStyle = '#00d0ff'; ctx.font = 'bold 10px Montserrat'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                    ctx.fillText("DEMO", b.canvasXPosition, b.canvasYPosition);
+                    ctx.fillStyle = '#00d0ff'; ctx.font = 'bold 12px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText("DEMO", b.canvasXPosition, b.canvasYPosition + 1);
                 } else if (b.type === 'extraBall') {
                     ctx.fillStyle = '#3ac47d'; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 4, 0, Math.PI * 2); ctx.fill();
                 }

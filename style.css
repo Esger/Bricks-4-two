@@ -5,7 +5,7 @@
     --accent-red: #ff3e3e;
     --accent-blue: #3e8dff;
     --text-color: #ffffff;
-    --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-main: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
 }
 
 * {
