@@ -4,10 +4,13 @@ export class Paddle {
         this.side = side; // 'top' or 'bottom'
         this.color = color;
 
-        this.width = 120;
+        this.DEFAULT_WIDTH = 120;
+        this.width = this.DEFAULT_WIDTH;
+        this.MIN_WIDTH = 60;
+        this.MAX_WIDTH = 240;
         this.height = 15;
-        this.x = 0; // Center x
         this.y = 0;
+        this.widthExpiry = 0;
 
         this.reset();
     }
@@ -16,11 +19,28 @@ export class Paddle {
         const gameWidth = this.canvas.clientWidth;
         const gameHeight = this.canvas.clientHeight;
 
+        this.width = this.DEFAULT_WIDTH;
+        this.widthExpiry = 0;
         this.x = gameWidth / 2;
         if (this.side === 'top') {
             this.y = 20 + this.height / 2;
         } else {
             this.y = gameHeight - 20 - this.height / 2;
+        }
+    }
+
+    changeWidth(delta, now) {
+        this.width = Math.max(this.MIN_WIDTH, Math.min(this.MAX_WIDTH, this.width + delta));
+        this.widthExpiry = now + 10000; // 10 seconds duration
+        // Keep paddle center within bounds after resize
+        this.moveTo(this.x);
+    }
+
+    update(now) {
+        if (this.widthExpiry > 0 && now > this.widthExpiry) {
+            this.width = this.DEFAULT_WIDTH;
+            this.widthExpiry = 0;
+            this.moveTo(this.x); // Ensure bounds are correct after shrinking/growing back
         }
     }
 

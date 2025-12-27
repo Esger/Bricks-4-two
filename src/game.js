@@ -155,11 +155,26 @@ export class Game {
             const fives = Math.floor(score / 5);
             const ones = score % 5;
             let html = '';
+
+            // Full blocks of five
             for (let i = 0; i < fives; i++) {
-                html += '<span class="tally-five">||||</span>';
+                html += `
+                    <div class="tally-block">
+                        <div class="mark"></div>
+                        <div class="mark"></div>
+                        <div class="mark"></div>
+                        <div class="mark"></div>
+                        <div class="slash"></div>
+                    </div>`;
             }
+
+            // Partial block for remaining ones
             if (ones > 0) {
-                html += '<span class="tally-ones">' + '|'.repeat(ones) + '</span>';
+                html += '<div class="tally-block">';
+                for (let i = 0; i < ones; i++) {
+                    html += '<div class="mark"></div>';
+                }
+                html += '</div>';
             }
             return html;
         };
@@ -216,6 +231,23 @@ export class Game {
         else this.ballsBottom.push(b);
     }
 
+    removeOneBall(side) {
+        const ballArray = (side === 'top') ? this.ballsTop : this.ballsBottom;
+        if (ballArray.length > 1) {
+            // Deactivate the first extra ball we find
+            const extraBall = ballArray.find(b => b.isExtra && b.active);
+            if (extraBall) {
+                extraBall.active = false;
+            } else {
+                // If somehow no extra ball but multiple balls, reset the first one
+                ballArray[0].reset();
+            }
+        } else {
+            // Only one ball left - reset it to the paddle
+            if (ballArray[0]) ballArray[0].reset();
+        }
+    }
+
     scorePoint(winner) {
         // Point scoring on ball-loss is now disabled in favor of Match Wins tally.
         // We still trigger the timer update to allow for AI handoff.
@@ -240,12 +272,19 @@ export class Game {
 
         if (lastType === 'extraBall') {
             this.spawnExtraBall(ball.side);
+        } else if (lastType === 'removeBall') {
+            this.removeOneBall(ball.side);
+        } else if (lastType === 'enlargePaddle') {
+            const paddle = (ball.side === 'top') ? this.paddleTop : this.paddleBottom;
+            paddle.changeWidth(40, performance.now());
+        } else if (lastType === 'shrinkPaddle') {
+            const paddle = (ball.side === 'top') ? this.paddleTop : this.paddleBottom;
+            paddle.changeWidth(-40, performance.now());
         }
     }
 
     update(now) {
         if (!this.running) return;
-        if (this.wall.isDebugPaused) return;
 
         // ANTI-STALL: Ensure at least one primary ball exists per side
         if (this.ballsTop.length === 0) this.ballsTop = [new Ball(this.canvas, 'top', '#ff6b6b')];
@@ -272,6 +311,9 @@ export class Game {
 
         if (this.isAiTop) this.updateAI('top');
         if (this.isAiBottom) this.updateAI('bottom');
+
+        this.paddleTop.update(now);
+        this.paddleBottom.update(now);
 
         this.wall.update(this);
 

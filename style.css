@@ -5,7 +5,7 @@
     --accent-red: #ff3e3e;
     --accent-blue: #3e8dff;
     --text-color: #ffffff;
-    --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-main: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
 }
 
 * {
@@ -51,12 +51,21 @@ html {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
-    font-weight: bold;
-    letter-spacing: 2px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 1px;
     background: var(--glass-bg);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--glass-border);
+    gap: 15px;
+    /* Spacing between tally blocks */
+    /* Hardware acceleration to prevent flickering during fast play */
+    transform: translateZ(0);
+    will-change: transform;
+}
+
+#score-top {
+    transform: rotate(180deg);
 }
 
 #score-bottom {
@@ -64,32 +73,32 @@ html {
     border-bottom: none;
 }
 
-.tally-five {
+.tally-block {
     position: relative;
-    display: inline-block;
-    margin: 0 8px;
-    letter-spacing: 2px;
-    font-family: monospace;
-    /* Monospace helps align the bars */
+    width: 32px;
+    /* Slightly smaller for mobile fit */
+    height: 20px;
+    display: flex;
+    justify-content: flex-start;
+    gap: 3px;
 }
 
-.tally-five::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: -4px;
-    width: calc(100% + 8px);
-    height: 3px;
-    background: currentColor;
-    transform: translateY(-50%) rotate(-30deg);
+.mark {
+    width: 3px;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.6);
     border-radius: 2px;
-    opacity: 0.9;
 }
 
-.tally-ones {
-    margin-left: 8px;
-    letter-spacing: 4px;
-    font-family: monospace;
+.slash {
+    position: absolute;
+    width: 3px;
+    height: 160%;
+    background-color: rgba(255, 255, 255, 0.6);
+    left: 33%;
+    top: -32%;
+    transform: translateX(-50%) rotate(-65deg);
+    border-radius: 2px;
 }
 
 .overlay {
@@ -105,6 +114,9 @@ html {
     backdrop-filter: blur(2px);
     z-index: 10;
     transition: opacity 0.3s ease, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Hardware acceleration to prevent overlay flicker */
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 .overlay.rotate-180 {
@@ -139,6 +151,7 @@ html {
 
 .overlay:not(.hidden) .message {
     animation: pulse 2s infinite ease-in-out;
+    transform: translateZ(0);
 }
 
 .restart-btn {
