@@ -70,7 +70,8 @@ export class Paddle {
             left: this.x - this.width / 2,
             right: this.x + this.width / 2,
             top: this.y - this.height / 2,
-            bottom: this.y + this.height / 2
+            bottom: this.y + this.height / 2,
+            centerY: this.y
         };
     }
 }

@@ -10,8 +10,8 @@ export class Game {
         this.height = 0;
         this.running = false;
 
-        this.scoreTop = 0;
-        this.scoreBottom = 0;
+        this.matchesWonTop = 0;
+        this.matchesWonBottom = 0;
 
         this.paddleTop = new Paddle(canvas, 'top', '#ff3e3e');
         this.paddleBottom = new Paddle(canvas, 'bottom', '#3e8dff');
@@ -24,6 +24,14 @@ export class Game {
 
         // Helper: small chance special bricks will appear occasionally
         this._lastSpawnedExtraAt = 0;
+
+        // AI state
+        this.isAiTop = false;
+        this.isAiBottom = false;
+        this.aiThreshold = 10000; // 10 seconds in ms
+        this.lastActionTop = 0;
+        this.lastActionBottom = 0;
+        this.winData = null;
 
         // Initial launch on first tap on overlay
         this.onFirstTap = () => {
@@ -38,19 +46,27 @@ export class Game {
         this.initInput();
     }
 
+    get isDemoMode() {
+        return this.isAiTop && this.isAiBottom;
+    }
+
     initInput() {
         const handlePointer = (e) => {
             if (!this.running) return;
 
             const rect = this.canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const x = (e.clientX - rect.left);
+            const y = (e.clientY - rect.top);
 
             // Upper half controls the top player; lower half controls the bottom player
             if (y >= this.height / 2) {
                 this.paddleBottom.moveTo(x);
+                this.isAiBottom = false; // Manually moving disables AI
+                this.lastActionBottom = performance.now();
             } else {
                 this.paddleTop.moveTo(x);
+                this.isAiTop = false; // Manually moving disables AI
+                this.lastActionTop = performance.now();
             }
         };
 
@@ -58,7 +74,6 @@ export class Game {
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
         // Prevent default touch gestures that may trigger browser navigation (edge swipes, back/forward)
-        // Use non-passive listeners so we can call preventDefault()
         this.canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
         this.canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
         this.canvas.addEventListener('touchend', (e) => { e.preventDefault(); }, { passive: false });
@@ -68,12 +83,33 @@ export class Game {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
+            // CHECK FOR DEMO BRICK CLICK
+            const demoBrick = this.wall.getDemoBrick();
+            if (demoBrick) {
+                const bx = demoBrick.canvasXPosition;
+                const by = demoBrick.canvasYPosition;
+                const bw = demoBrick.width / 2;
+                const bh = demoBrick.height / 2;
+                if (Math.abs(x - bx) < bw && Math.abs(y - by) < bh) {
+                    this.isAiTop = true;
+                    this.isAiBottom = true;
+                    return;
+                }
+            }
+
             // Upper half launches a top-side ball; lower half launches a bottom-side ball
             if (y >= this.height / 2) {
-                // Launch primary bottom ball (first in array)
-                if (this.ballsBottom[0]) this.ballsBottom[0].launch(this.paddleBottom.x, x, y);
+                if (this.ballsBottom[0]) {
+                    this.ballsBottom[0].launch(this.paddleBottom.x, x, y);
+                    this.isAiBottom = false;
+                    this.lastActionBottom = performance.now();
+                }
             } else {
-                if (this.ballsTop[0]) this.ballsTop[0].launch(this.paddleTop.x, x, y);
+                if (this.ballsTop[0]) {
+                    this.ballsTop[0].launch(this.paddleTop.x, x, y);
+                    this.isAiTop = false;
+                    this.lastActionTop = performance.now();
+                }
             }
         });
     }
@@ -114,15 +150,25 @@ export class Game {
     }
 
     updateScoreDisplay() {
-        const tally = (score) => '|'.repeat(score);
-        document.getElementById('score-top').textContent = tally(this.scoreTop);
-        document.getElementById('score-bottom').textContent = tally(this.scoreBottom);
+        const formatTally = (score) => {
+            if (score <= 0) return '';
+            const fives = Math.floor(score / 5);
+            const ones = score % 5;
+            let html = '';
+            for (let i = 0; i < fives; i++) {
+                html += '<span class="tally-five">||||</span>';
+            }
+            if (ones > 0) {
+                html += '<span class="tally-ones">' + '|'.repeat(ones) + '</span>';
+            }
+            return html;
+        };
+        document.getElementById('score-top').innerHTML = formatTally(this.matchesWonTop);
+        document.getElementById('score-bottom').innerHTML = formatTally(this.matchesWonBottom);
     }
 
     start() {
         this.running = true;
-        this.scoreTop = 0;
-        this.scoreBottom = 0;
         this.updateScoreDisplay();
 
         this.overlay.classList.add('hidden');
@@ -138,6 +184,12 @@ export class Game {
         this.ballsBottom.forEach(b => b.reset());
 
         this.wall.initializeWall();
+        this.lastActionTop = performance.now();
+        this.lastActionBottom = performance.now();
+        this.isAiTop = false;
+        this.isAiBottom = false;
+        this.winData = null;
+        this.overlay.classList.remove('rotate-180');
     }
 
     spawnExtraBall(side) {
@@ -145,17 +197,14 @@ export class Game {
         const color = (side === 'top') ? '#ff6b6b' : '#6ba5ff';
         const b = new Ball(this.canvas, side, color);
         b.isExtra = true;
-
-        // Spawn just above/below paddle
         b.x = paddle.x;
         b.y = paddle.y + ((side === 'top') ? (paddle.height + b.radius + 4) : -(paddle.height + b.radius + 4));
 
-        // Give it an upward (from bottom) or downward (from top) initial velocity
-        const minLaunch = 2; // keep consistent with min launch speed used in Ball.launch
+        const minLaunch = 2;
         const primary = (side === 'top') ? this.ballsTop[0] : this.ballsBottom[0];
         const baseSpeed = (primary && primary.gameSpeed) || minLaunch;
         const initialSpeed = Math.max(minLaunch, Math.min(8, baseSpeed));
-        const vx = (Math.random() - 0.5) * 2; // small horizontal
+        const vx = (Math.random() - 0.5) * 2;
         const vy = (side === 'bottom') ? -Math.abs(initialSpeed) : Math.abs(initialSpeed);
         const len = Math.hypot(vx, vy) || 1;
         b.vx = (vx / len) * initialSpeed;
@@ -168,49 +217,77 @@ export class Game {
     }
 
     scorePoint(winner) {
+        // Point scoring on ball-loss is now disabled in favor of Match Wins tally.
+        // We still trigger the timer update to allow for AI handoff.
         if (winner === 'top') {
-            this.scoreTop++;
+            this.lastActionBottom = performance.now();
         } else {
-            this.scoreBottom++;
+            this.lastActionTop = performance.now();
         }
-        this.updateScoreDisplay();
     }
 
     onWallHit(ball) {
-        // React to special bricks: if the recently hit brick was a special 'extraBall', spawn a new ball on the hitter's side
+        const isAiPlayer = (ball.side === 'top' ? this.isAiTop : this.isAiBottom);
         const lastType = this.wall.lastHitBrickType;
+
+        // Special: If DEMO brick hit, enable AI for everyone
+        if (lastType === 'demo') {
+            this.isAiTop = true;
+            this.isAiBottom = true;
+        }
+
+        if (isAiPlayer && !this.isDemoMode) return;
+
         if (lastType === 'extraBall') {
-            console.log('Special brick hit! Spawning extra ball for', ball.side);
             this.spawnExtraBall(ball.side);
         }
     }
 
     update(now) {
         if (!this.running) return;
-
-        // --- TRAINING PAUSE ---
-        // Escape key toggles this state in wall.js
         if (this.wall.isDebugPaused) return;
+
+        // ANTI-STALL: Ensure at least one primary ball exists per side
+        if (this.ballsTop.length === 0) this.ballsTop = [new Ball(this.canvas, 'top', '#ff6b6b')];
+        if (this.ballsBottom.length === 0) this.ballsBottom = [new Ball(this.canvas, 'bottom', '#6ba5ff')];
 
         // Update all balls
         for (const b of this.ballsTop) b.update(this);
         for (const b of this.ballsBottom) b.update(this);
 
-        // Remove inactive extra balls to avoid accumulation
         this.ballsTop = this.ballsTop.filter(b => !(b.isExtra && !b.active));
         this.ballsBottom = this.ballsBottom.filter(b => !(b.isExtra && !b.active));
 
+        // Resolve brick removals after all balls have updated their positions/bounces
+        this.wall.resolvePendingImpacts();
+
+        // Update AI timers
+        const currentTime = performance.now();
+        if (!this.isAiTop && (currentTime - this.lastActionTop > this.aiThreshold)) {
+            if (this.ballsTop[0] && !this.ballsTop[0].active) this.isAiTop = true;
+        }
+        if (!this.isAiBottom && (currentTime - this.lastActionBottom > this.aiThreshold)) {
+            if (this.ballsBottom[0] && !this.ballsBottom[0].active) this.isAiBottom = true;
+        }
+
+        if (this.isAiTop) this.updateAI('top');
+        if (this.isAiBottom) this.updateAI('bottom');
+
         this.wall.update(this);
 
-        // Check for win condition (wall reach far end)
-        const wallWinner = this.wall.checkWin();
-        if (wallWinner) {
-            this.gameOver(wallWinner, 'The wall reached the end!');
-        }
+        const winResult = this.wall.checkWin();
+        if (winResult) this.gameOver(winResult, 'The wall reached the end!');
     }
 
-    gameOver(winner, reason) {
+    gameOver(winData, reason) {
         this.running = false;
+        this.winData = winData;
+        const winner = winData.winner;
+
+        // Match Win increment
+        if (winner === 'top') this.matchesWonTop++;
+        else this.matchesWonBottom++;
+
         const winnerName = winner === 'top' ? 'RED' : 'BLUE';
         const winnerColor = winner === 'top' ? '#ff3e3e' : '#3e8dff';
 
@@ -220,36 +297,88 @@ export class Game {
         this.message.style.boxShadow = `0 0 20px ${winnerColor}44`;
 
         this.overlay.classList.remove('hidden');
+        if (winner === 'top') {
+            this.overlay.classList.add('rotate-180');
+        } else {
+            this.overlay.classList.remove('rotate-180');
+        }
         this.restartBtn.style.display = 'block';
-
-        // Update score one last time if it was a ball loss
         this.updateScoreDisplay();
+
+        this.isAiTop = false;
+        this.isAiBottom = false;
+    }
+
+    updateAI(side) {
+        const paddle = (side === 'top') ? this.paddleTop : this.paddleBottom;
+        const balls = (side === 'top') ? this.ballsTop : this.ballsBottom;
+        const opponentBalls = (side === 'top') ? this.ballsBottom : this.ballsTop;
+
+        const primaryBall = balls[0];
+
+        if (primaryBall && !primaryBall.active) {
+            const targetX = this.width / 2 + (Math.random() - 0.5) * 100;
+            const targetY = this.isDemoMode ? this.height / 2 : ((side === 'top') ? paddle.y + 10 : paddle.y - 10);
+            primaryBall.launch(paddle.x, targetX, targetY);
+            return;
+        }
+
+        const allBalls = [...balls, ...opponentBalls].filter(b => b.active);
+        const incomingBalls = allBalls.filter(b => {
+            if (side === 'top') return b.vy < 0;
+            return b.vy > 0;
+        });
+
+        if (incomingBalls.length > 0) {
+            incomingBalls.sort((a, b) => {
+                const distA = (side === 'top') ? a.y : this.height - a.y;
+                const distB = (side === 'top') ? b.y : this.height - b.y;
+                return distA - distB;
+            });
+
+            const targetBall = incomingBalls[0];
+            const trackingSpeed = this.isDemoMode ? 1.0 : 0.15;
+            let targetX = paddle.x + (targetBall.x - paddle.x) * trackingSpeed;
+            paddle.moveTo(targetX);
+        } else {
+            const idleX = primaryBall ? primaryBall.x : this.width / 2;
+            const targetX = paddle.x + (idleX - paddle.x) * 0.05;
+            paddle.moveTo(targetX);
+        }
     }
 
     draw() {
-        // Dark background
         this.ctx.fillStyle = '#0d0d12';
         this.ctx.fillRect(0, 0, this.width, this.height);
-
-        if (!this.running) return;
 
         // Mid-line (Base)
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
         this.ctx.setLineDash([10, 10]);
         this.ctx.beginPath();
-        this.ctx.moveTo(0, this.height / 2);
-        this.ctx.lineTo(this.width, this.height / 2);
-        this.ctx.stroke();
-        this.ctx.setLineDash([]);
+        this.ctx.moveTo(0, this.height / 2); this.ctx.lineTo(this.width, this.height / 2);
+        this.ctx.stroke(); this.ctx.setLineDash([]);
 
-        // Draw wall
         this.wall.draw(this.ctx);
 
-        // Draw paddles
+        // Highlight winning brick if game over
+        if (this.winData && this.winData.brick) {
+            const b = this.winData.brick;
+            this.ctx.save();
+            this.ctx.shadowBlur = 20;
+            this.ctx.shadowColor = '#ffffff';
+            this.ctx.strokeStyle = '#ffffff';
+            this.ctx.lineWidth = 3;
+            const rx = b.canvasXPosition - b.width / 2;
+            const ry = b.canvasYPosition - b.height / 2;
+            this.ctx.beginPath();
+            if (this.ctx.roundRect) this.ctx.roundRect(rx, ry, b.width, b.height, 4);
+            else this.ctx.rect(rx, ry, b.width, b.height);
+            this.ctx.stroke();
+            this.ctx.restore();
+        }
+
         this.paddleTop.draw(this.ctx);
         this.paddleBottom.draw(this.ctx);
-
-        // Draw balls
         for (const b of this.ballsTop) b.draw(this.ctx);
         for (const b of this.ballsBottom) b.draw(this.ctx);
     }
