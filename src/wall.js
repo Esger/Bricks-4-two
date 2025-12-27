@@ -185,7 +185,7 @@ export class Wall {
         this.lastHitBrickType = hitBrick.type || null;
 
         if (hitBrick.inertFromSide === ballSide) {
-            if (hitBrick.type === 'extraBall' || hitBrick.type === 'demo') hitBrick.type = null;
+            if (hitBrick.type === 'extraBall' || hitBrick.type === 'removeBall' || hitBrick.type === 'demo') hitBrick.type = null;
             return;
         }
 
@@ -200,7 +200,10 @@ export class Wall {
             for (const [cr, cc] of candidates) {
                 const key = `${cc},${cr}`;
                 if (this.activeBrickMap.has(key)) continue;
-                const t = (Math.random() < this.specialOnRepairChance) ? 'extraBall' : null;
+                let t = null;
+                if (Math.random() < this.specialOnRepairChance) {
+                    t = (Math.random() > 0.5) ? 'extraBall' : 'removeBall';
+                }
                 this.addBrickAt(cr, cc, t);
                 isConnected = this.analyzeTopology();
                 if (isConnected) break;
@@ -209,7 +212,10 @@ export class Wall {
 
             if (!isConnected) {
                 for (const [cr, cc] of candidates) {
-                    const t = (Math.random() < this.specialOnRepairChance) ? 'extraBall' : null;
+                    let t = null;
+                    if (Math.random() < this.specialOnRepairChance) {
+                        t = (Math.random() > 0.5) ? 'extraBall' : 'removeBall';
+                    }
                     this.addBrickAt(cr, cc, t);
                     isConnected = this.analyzeTopology();
                     if (isConnected) break;
@@ -313,12 +319,14 @@ export class Wall {
                 ctx.shadowBlur = 10; ctx.shadowColor = '#00d0ff';
                 ctx.fillStyle = 'rgba(0, 208, 255, 0.2)'; ctx.strokeStyle = '#00d0ff';
             } else if (b.type === 'extraBall') {
-                ctx.shadowBlur = 8; ctx.shadowColor = b.isOrphan ? '#ff3e3e' : '#00ff88';
-                ctx.fillStyle = 'rgba(0, 200, 80, 0.12)'; ctx.strokeStyle = '#00ff88';
+                ctx.shadowBlur = 8; ctx.shadowColor = '#00ff88';
+                ctx.fillStyle = 'rgba(0, 255, 136, 0.15)'; ctx.strokeStyle = '#00ff88';
+            } else if (b.type === 'removeBall') {
+                ctx.shadowBlur = 8; ctx.shadowColor = '#ff3e3e';
+                ctx.fillStyle = 'rgba(255, 62, 62, 0.15)'; ctx.strokeStyle = '#ff3e3e';
             } else {
-                ctx.fillStyle = b.isOrphan ? 'rgba(255, 62, 62, 0.2)' : 'rgba(255,255,255,0.15)';
-                ctx.strokeStyle = b.isOrphan ? '#ff3e3e' : 'rgba(255,255,255,0.4)';
-                if (b.isOrphan) { ctx.shadowBlur = 10; ctx.shadowColor = '#ff3e3e'; }
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
             }
 
             if (b.inertFromSide) {
@@ -327,7 +335,7 @@ export class Wall {
                 ctx.strokeStyle = (b.inertFromSide === 'top') ? '#ff3e3e44' : '#3e8dff44';
             }
 
-            ctx.lineWidth = (b.type || b.isOrphan) ? 2 : 1;
+            ctx.lineWidth = (b.type) ? 2 : 1;
             ctx.beginPath();
             if (ctx.roundRect) ctx.roundRect(rx, ry, drawW, drawH, 4);
             else ctx.rect(rx, ry, drawW, drawH);
@@ -337,10 +345,18 @@ export class Wall {
             if (b.type) {
                 ctx.shadowBlur = 0;
                 if (b.type === 'demo') {
-                    ctx.fillStyle = '#00d0ff'; ctx.font = 'bold 10px Montserrat'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                    ctx.fillText("DEMO", b.canvasXPosition, b.canvasYPosition);
+                    ctx.fillStyle = '#00d0ff'; ctx.font = 'bold 12px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText("DEMO", b.canvasXPosition, b.canvasYPosition + 1);
                 } else if (b.type === 'extraBall') {
-                    ctx.fillStyle = '#3ac47d'; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 4, 0, Math.PI * 2); ctx.fill();
+                    // Green outlined ball with +
+                    ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 7, 0, Math.PI * 2); ctx.stroke();
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText("+", b.canvasXPosition, b.canvasYPosition + 1);
+                } else if (b.type === 'removeBall') {
+                    // Red outlined ball with -
+                    ctx.strokeStyle = '#ff3e3e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 7, 0, Math.PI * 2); ctx.stroke();
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText("-", b.canvasXPosition, b.canvasYPosition);
                 }
             }
         }
