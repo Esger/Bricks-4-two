@@ -155,11 +155,26 @@ export class Game {
             const fives = Math.floor(score / 5);
             const ones = score % 5;
             let html = '';
+
+            // Full blocks of five
             for (let i = 0; i < fives; i++) {
-                html += '<span class="tally-five">||||</span>';
+                html += `
+                    <div class="tally-block">
+                        <div class="mark"></div>
+                        <div class="mark"></div>
+                        <div class="mark"></div>
+                        <div class="mark"></div>
+                        <div class="slash"></div>
+                    </div>`;
             }
+
+            // Partial block for remaining ones
             if (ones > 0) {
-                html += '<span class="tally-ones">' + '|'.repeat(ones) + '</span>';
+                html += '<div class="tally-block">';
+                for (let i = 0; i < ones; i++) {
+                    html += '<div class="mark"></div>';
+                }
+                html += '</div>';
             }
             return html;
         };
