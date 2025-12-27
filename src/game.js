@@ -231,6 +231,23 @@ export class Game {
         else this.ballsBottom.push(b);
     }
 
+    removeOneBall(side) {
+        const ballArray = (side === 'top') ? this.ballsTop : this.ballsBottom;
+        if (ballArray.length > 1) {
+            // Deactivate the first extra ball we find
+            const extraBall = ballArray.find(b => b.isExtra && b.active);
+            if (extraBall) {
+                extraBall.active = false;
+            } else {
+                // If somehow no extra ball but multiple balls, reset the first one
+                ballArray[0].reset();
+            }
+        } else {
+            // Only one ball left - reset it to the paddle
+            if (ballArray[0]) ballArray[0].reset();
+        }
+    }
+
     scorePoint(winner) {
         // Point scoring on ball-loss is now disabled in favor of Match Wins tally.
         // We still trigger the timer update to allow for AI handoff.
@@ -255,6 +272,8 @@ export class Game {
 
         if (lastType === 'extraBall') {
             this.spawnExtraBall(ball.side);
+        } else if (lastType === 'removeBall') {
+            this.removeOneBall(ball.side);
         }
     }
 
