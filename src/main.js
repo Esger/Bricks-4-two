@@ -1,3 +1,6 @@
+/**
+ * Bricks-4-Two v1.1
+ */
 import { Game } from './game.js';
 
 window.addEventListener('load', () => {
