@@ -274,12 +274,17 @@ export class Game {
             this.spawnExtraBall(ball.side);
         } else if (lastType === 'removeBall') {
             this.removeOneBall(ball.side);
+        } else if (lastType === 'enlargePaddle') {
+            const paddle = (ball.side === 'top') ? this.paddleTop : this.paddleBottom;
+            paddle.changeWidth(40, performance.now());
+        } else if (lastType === 'shrinkPaddle') {
+            const paddle = (ball.side === 'top') ? this.paddleTop : this.paddleBottom;
+            paddle.changeWidth(-40, performance.now());
         }
     }
 
     update(now) {
         if (!this.running) return;
-        if (this.wall.isDebugPaused) return;
 
         // ANTI-STALL: Ensure at least one primary ball exists per side
         if (this.ballsTop.length === 0) this.ballsTop = [new Ball(this.canvas, 'top', '#ff6b6b')];
@@ -306,6 +311,9 @@ export class Game {
 
         if (this.isAiTop) this.updateAI('top');
         if (this.isAiBottom) this.updateAI('bottom');
+
+        this.paddleTop.update(now);
+        this.paddleBottom.update(now);
 
         this.wall.update(this);
 

@@ -15,7 +15,8 @@ export class Brick {
         const staggerOffset = this.width / 2;
         const rowParity = Math.abs(this.rowCoordinate) % 2;
         const xOffset = (rowParity === 1) ? staggerOffset : 0;
-        this.canvasXPosition = (this.columnCoordinate * standardWidth) + xOffset;
+        // Center so column 0 starts at 0 (without stagger)
+        this.canvasXPosition = (this.columnCoordinate * standardWidth) + xOffset + (standardWidth / 2);
         this.canvasYPosition = this.rowCoordinate * this.height;
     }
 }
@@ -36,53 +37,12 @@ export class Wall {
         this.masterMinCol = 0;
         this.masterMaxCol = 0;
 
-        this.isDebugPaused = false;
-        this.snapshotAtPause = null;
-        this.lastImpactCol = null;
-        this.lastImpactCoord = null;
-        this.lastAuditAdded = [];
-        this.lastAuditRemoved = [];
-
         // Hit registry to prevent tunneling and simultaneous hit issues
         this.pendingImpacts = new Map(); // Map of brickKey -> side
 
-        this.setupTrainingControls();
         this.initializeWall();
     }
 
-    setupTrainingControls() {
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') this.toggleTrainingPause();
-        });
-        this.canvas.addEventListener('pointerdown', (e) => {
-            if (!this.isDebugPaused) return;
-            const rect = this.canvas.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const clickY = e.clientY - rect.top;
-            const row = Math.round(clickY / this.brickHeight);
-            const xShift = (Math.abs(row) % 2 === 1) ? (this.brickWidth / 2) : 0;
-            const col = Math.round((clickX - xShift) / this.brickWidth);
-            const key = `${col},${row}`;
-            if (this.activeBrickMap.has(key)) this.activeBrickMap.delete(key);
-            else this.addBrickAt(row, col);
-            this.analyzeTopology();
-        });
-    }
-
-    toggleTrainingPause() {
-        if (!this.isDebugPaused) {
-            this.isDebugPaused = true;
-            this.snapshotAtPause = Array.from(this.activeBrickMap.keys()).sort().join(" | ");
-            this.analyzeTopology();
-        } else {
-            this.isDebugPaused = false;
-            this.snapshotAtPause = null;
-            this.lastImpactCol = null;
-            this.lastImpactCoord = null;
-            this.lastAuditAdded = [];
-            this.lastAuditRemoved = [];
-        }
-    }
 
     getMasonryNeighbors(row, col) {
         const parity = Math.abs(row) % 2;
@@ -180,12 +140,10 @@ export class Wall {
         const hitC = hitBrick.columnCoordinate;
         const delta = (ballSide === 'top' ? 1 : -1);
 
-        this.lastImpactCol = hitC;
-        this.lastImpactCoord = { row: hitR, col: hitC };
         this.lastHitBrickType = hitBrick.type || null;
 
         if (hitBrick.inertFromSide === ballSide) {
-            if (hitBrick.type === 'extraBall' || hitBrick.type === 'removeBall' || hitBrick.type === 'demo') hitBrick.type = null;
+            if (hitBrick.type === 'extraBall' || hitBrick.type === 'removeBall' || hitBrick.type === 'enlargePaddle' || hitBrick.type === 'shrinkPaddle' || hitBrick.type === 'demo') hitBrick.type = null;
             return;
         }
 
@@ -202,7 +160,11 @@ export class Wall {
                 if (this.activeBrickMap.has(key)) continue;
                 let t = null;
                 if (Math.random() < this.specialOnRepairChance) {
-                    t = (Math.random() > 0.5) ? 'extraBall' : 'removeBall';
+                    const rnd = Math.random();
+                    if (rnd < 0.3) t = 'extraBall';
+                    else if (rnd < 0.6) t = 'removeBall';
+                    else if (rnd < 0.8) t = 'enlargePaddle';
+                    else t = 'shrinkPaddle';
                 }
                 this.addBrickAt(cr, cc, t);
                 isConnected = this.analyzeTopology();
@@ -214,7 +176,11 @@ export class Wall {
                 for (const [cr, cc] of candidates) {
                     let t = null;
                     if (Math.random() < this.specialOnRepairChance) {
-                        t = (Math.random() > 0.5) ? 'extraBall' : 'removeBall';
+                        const rnd = Math.random();
+                        if (rnd < 0.3) t = 'extraBall';
+                        else if (rnd < 0.6) t = 'removeBall';
+                        else if (rnd < 0.8) t = 'enlargePaddle';
+                        else t = 'shrinkPaddle';
                     }
                     this.addBrickAt(cr, cc, t);
                     isConnected = this.analyzeTopology();
@@ -223,9 +189,6 @@ export class Wall {
             }
         }
         this.updateInertFlags();
-        const postKeys = new Set(this.activeBrickMap.keys());
-        this.lastAuditAdded = [...postKeys].filter(k => !preKeys.has(k));
-        this.lastAuditRemoved = [...preKeys].filter(k => !postKeys.has(k)).filter(k => k !== `${hitC},${hitR}`);
     }
 
     resolvePendingImpacts() {
@@ -239,7 +202,6 @@ export class Wall {
     }
 
     update(game) {
-        if (this.isDebugPaused) return;
         for (const b of this.activeBrickMap.values()) {
             if (b.rowCoordinate < this.topLimit) b.rowCoordinate = this.topLimit;
             if (b.rowCoordinate > this.bottomLimit) b.rowCoordinate = this.bottomLimit;
@@ -249,8 +211,6 @@ export class Wall {
     }
 
     checkCollision(ball) {
-        if (this.isDebugPaused) return false;
-
         // OPTIMIZATION: Spatial Grid Lookup
         // Instead of checking ALL bricks, we only check the ones immediately around the ball coordinate.
         const estRow = Math.round(ball.y / this.brickHeight);
@@ -307,6 +267,11 @@ export class Wall {
     draw(ctx) {
         ctx.save();
 
+        // Clip to canvas to prevent "peeking" buffer bricks
+        ctx.beginPath();
+        ctx.rect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
+        ctx.clip();
+
         // Shadows are EXPENSIVE on slower mobile devices. 
         // We only enable them for special bricks to keep draw calls fast.
         for (const b of this.activeBrickMap.values()) {
@@ -324,6 +289,12 @@ export class Wall {
             } else if (b.type === 'removeBall') {
                 ctx.shadowBlur = 8; ctx.shadowColor = '#ff3e3e';
                 ctx.fillStyle = 'rgba(255, 62, 62, 0.15)'; ctx.strokeStyle = '#ff3e3e';
+            } else if (b.type === 'enlargePaddle') {
+                ctx.shadowBlur = 8; ctx.shadowColor = '#3e8dff';
+                ctx.fillStyle = 'rgba(62, 141, 255, 0.15)'; ctx.strokeStyle = '#3e8dff';
+            } else if (b.type === 'shrinkPaddle') {
+                ctx.shadowBlur = 8; ctx.shadowColor = '#ff9f3e';
+                ctx.fillStyle = 'rgba(255, 159, 62, 0.15)'; ctx.strokeStyle = '#ff9f3e';
             } else {
                 ctx.fillStyle = 'rgba(255,255,255,0.15)';
                 ctx.strokeStyle = 'rgba(255,255,255,0.4)';
@@ -357,9 +328,32 @@ export class Wall {
                     ctx.strokeStyle = '#ff3e3e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 7, 0, Math.PI * 2); ctx.stroke();
                     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                     ctx.fillText("-", b.canvasXPosition, b.canvasYPosition);
+                } else if (b.type === 'enlargePaddle') {
+                    // Outward arrows <-->
+                    ctx.strokeStyle = '#3e8dff'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                    const x = b.canvasXPosition, y = b.canvasYPosition, w = 12, h = 6;
+                    ctx.beginPath();
+                    ctx.moveTo(x - w, y); ctx.lineTo(x + w, y); // Main line
+                    // Left arrow <
+                    ctx.moveTo(x - w + h, y - h / 2); ctx.lineTo(x - w, y); ctx.lineTo(x - w + h, y + h / 2);
+                    // Right arrow >
+                    ctx.moveTo(x + w - h, y - h / 2); ctx.lineTo(x + w, y); ctx.lineTo(x + w - h, y + h / 2);
+                    ctx.stroke();
+                } else if (b.type === 'shrinkPaddle') {
+                    // Inward arrows >-<
+                    ctx.strokeStyle = '#ff9f3e'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                    const x = b.canvasXPosition, y = b.canvasYPosition, w = 12, h = 6;
+                    ctx.beginPath();
+                    ctx.moveTo(x - w + h, y); ctx.lineTo(x + w - h, y); // Main line
+                    // Left arrow >
+                    ctx.moveTo(x - w, y - h / 2); ctx.lineTo(x - w + h, y); ctx.lineTo(x - w, y + h / 2);
+                    // Right arrow <
+                    ctx.moveTo(x + w, y - h / 2); ctx.lineTo(x + w - h, y); ctx.lineTo(x + w, y + h / 2);
+                    ctx.stroke();
                 }
             }
         }
         ctx.restore();
     }
+
 }

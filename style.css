@@ -59,6 +59,9 @@ html {
     border-bottom: 1px solid var(--glass-border);
     gap: 15px;
     /* Spacing between tally blocks */
+    /* Hardware acceleration to prevent flickering during fast play */
+    transform: translateZ(0);
+    will-change: transform;
 }
 
 #score-top {
@@ -111,6 +114,9 @@ html {
     backdrop-filter: blur(2px);
     z-index: 10;
     transition: opacity 0.3s ease, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Hardware acceleration to prevent overlay flicker */
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 .overlay.rotate-180 {
@@ -145,6 +151,7 @@ html {
 
 .overlay:not(.hidden) .message {
     animation: pulse 2s infinite ease-in-out;
+    transform: translateZ(0);
 }
 
 .restart-btn {
