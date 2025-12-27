@@ -321,12 +321,12 @@ export class Wall {
                 } else if (b.type === 'extraBall') {
                     // Green outlined ball with +
                     ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 7, 0, Math.PI * 2); ctx.stroke();
-                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#00ff88'; ctx.font = 'bold 14px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                     ctx.fillText("+", b.canvasXPosition, b.canvasYPosition + 1);
                 } else if (b.type === 'removeBall') {
                     // Red outlined ball with -
                     ctx.strokeStyle = '#ff3e3e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.canvasXPosition, b.canvasYPosition, 7, 0, Math.PI * 2); ctx.stroke();
-                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#ff3e3e'; ctx.font = 'bold 16px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                     ctx.fillText("-", b.canvasXPosition, b.canvasYPosition);
                 } else if (b.type === 'enlargePaddle') {
                     // Outward arrows <-->
