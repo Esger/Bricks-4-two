@@ -276,10 +276,10 @@ export class Game {
             this.removeOneBall(ball.side);
         } else if (lastType === 'enlargePaddle') {
             const paddle = (ball.side === 'top') ? this.paddleTop : this.paddleBottom;
-            paddle.changeWidth(40);
+            paddle.changeWidth(40, performance.now());
         } else if (lastType === 'shrinkPaddle') {
             const paddle = (ball.side === 'top') ? this.paddleTop : this.paddleBottom;
-            paddle.changeWidth(-40);
+            paddle.changeWidth(-40, performance.now());
         }
     }
 
@@ -311,6 +311,9 @@ export class Game {
 
         if (this.isAiTop) this.updateAI('top');
         if (this.isAiBottom) this.updateAI('bottom');
+
+        this.paddleTop.update(now);
+        this.paddleBottom.update(now);
 
         this.wall.update(this);
 
