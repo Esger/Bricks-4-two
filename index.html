@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport"
+              content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>Bricks-4-Two</title>
+        <!-- Favicon: Blue ball SVG -->
+        <link rel="icon"
+              href="/favicon.svg"
+              type="image/svg+xml">
+        <link rel="stylesheet"
+              href="style.css">
+    </head>
+
+    <body>
+        <div id="game-container">
+            <div id="score-top"
+                 class="score-area"></div>
+            <canvas id="game-canvas"></canvas>
+            <div id="score-bottom"
+                 class="score-area"></div>
+
+            <div id="overlay"
+                 class="overlay">
+                <div class="message-container">
+                    <div id="message"
+                         class="message">Tap to Start</div>
+                    <button id="restart-btn"
+                            class="restart-btn">Play Again</button>
+                </div>
+            </div>
+        </div>
+        <script type="module"
+                src="src/main.js"></script>
+    </body>
+
+</html>
