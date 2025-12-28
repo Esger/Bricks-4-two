@@ -143,9 +143,20 @@ export class Ball {
                     return;
                 }
 
-                // Apply horizontal deflection
+                // Apply "curved" paddle deflection
+                // hitPos ranges from -1 (left edge) to 1 (right edge)
                 const hitPos = (this.x - paddle.x) / (paddle.width / 2);
-                this.vx += hitPos * 2;
+
+                // Add stronger deflection
+                this.vx += hitPos * 3;
+
+                // Enforce a minimum vertical velocity (at least 20% of total speed)
+                // This prevents the ball from going too horizontal
+                const minVy = this.gameSpeed * 0.2;
+                if (Math.abs(this.vy) < minVy) {
+                    this.vy = (this.vy > 0 ? 1 : -1) * minVy;
+                }
+
                 this._onBounce();
             }
         }

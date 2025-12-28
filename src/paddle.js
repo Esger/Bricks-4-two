@@ -58,21 +58,25 @@ export class Paddle {
         ctx.shadowBlur = 15;
         ctx.shadowColor = this.color;
 
-        ctx.beginPath();
+        // Arched paddle shape
         const rx = this.x - this.width / 2;
         const ry = this.y - this.height / 2;
+        const bulge = 6; // How much the paddle curves out
 
-        // Rounded rectangle
-        const radius = 5;
-        ctx.moveTo(rx + radius, ry);
-        ctx.lineTo(rx + this.width - radius, ry);
-        ctx.quadraticCurveTo(rx + this.width, ry, rx + this.width, ry + radius);
-        ctx.lineTo(rx + this.width, ry + this.height - radius);
-        ctx.quadraticCurveTo(rx + this.width, ry + this.height, rx + this.width - radius, ry + this.height);
-        ctx.lineTo(rx + radius, ry + this.height);
-        ctx.quadraticCurveTo(rx, ry + this.height, rx, ry + this.height - radius);
-        ctx.lineTo(rx, ry + radius);
-        ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
+        ctx.beginPath();
+        if (this.side === 'bottom') {
+            // Arched top for bottom paddle
+            ctx.moveTo(rx, ry + this.height);
+            ctx.lineTo(rx + this.width, ry + this.height);
+            ctx.lineTo(rx + this.width, ry + bulge);
+            ctx.quadraticCurveTo(this.x, ry - bulge, rx, ry + bulge);
+        } else {
+            // Arched bottom for top paddle
+            ctx.moveTo(rx, ry);
+            ctx.lineTo(rx + this.width, ry);
+            ctx.lineTo(rx + this.width, ry + this.height - bulge);
+            ctx.quadraticCurveTo(this.x, ry + this.height + bulge, rx, ry + this.height - bulge);
+        }
         ctx.closePath();
 
         ctx.fill();
