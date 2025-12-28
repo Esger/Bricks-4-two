@@ -96,6 +96,12 @@ export class Game {
                     return;
                 }
             }
+        });
+
+        this.canvas.addEventListener('pointerup', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
 
             // DETERMINE WHICH BALL TO LAUNCH
             // Logic:
@@ -116,13 +122,13 @@ export class Game {
             } else {
                 // Both need launch or both are AI - use zonal split
                 if (y >= this.height / 2) {
-                    if (this.ballsBottom[0]) {
+                    if (this.ballsBottom[0] && !this.ballsBottom[0].active) {
                         this.ballsBottom[0].launch(this.paddleBottom, x, y);
                         this.isAiBottom = false;
                         this.lastActionBottom = performance.now();
                     }
                 } else {
-                    if (this.ballsTop[0]) {
+                    if (this.ballsTop[0] && !this.ballsTop[0].active) {
                         this.ballsTop[0].launch(this.paddleTop, x, y);
                         this.isAiTop = false;
                         this.lastActionTop = performance.now();
