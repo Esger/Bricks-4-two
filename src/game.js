@@ -97,18 +97,36 @@ export class Game {
                 }
             }
 
-            // Upper half launches a top-side ball; lower half launches a bottom-side ball
-            if (y >= this.height / 2) {
-                if (this.ballsBottom[0]) {
-                    this.ballsBottom[0].launch(this.paddleBottom.x, x, y);
-                    this.isAiBottom = false;
-                    this.lastActionBottom = performance.now();
-                }
+            // DETERMINE WHICH BALL TO LAUNCH
+            // Logic:
+            // 1. If only one side has an inactive ball AND is human-controlled, launch it (flexible aiming).
+            // 2. If both have inactive balls, use the 50/50 height split.
+
+            const bottomNeedsLaunch = this.ballsBottom[0] && !this.ballsBottom[0].active && !this.isAiBottom;
+            const topNeedsLaunch = this.ballsTop[0] && !this.ballsTop[0].active && !this.isAiTop;
+
+            if (bottomNeedsLaunch && !topNeedsLaunch) {
+                this.ballsBottom[0].launch(this.paddleBottom, x, y);
+                this.isAiBottom = false;
+                this.lastActionBottom = performance.now();
+            } else if (topNeedsLaunch && !bottomNeedsLaunch) {
+                this.ballsTop[0].launch(this.paddleTop, x, y);
+                this.isAiTop = false;
+                this.lastActionTop = performance.now();
             } else {
-                if (this.ballsTop[0]) {
-                    this.ballsTop[0].launch(this.paddleTop.x, x, y);
-                    this.isAiTop = false;
-                    this.lastActionTop = performance.now();
+                // Both need launch or both are AI - use zonal split
+                if (y >= this.height / 2) {
+                    if (this.ballsBottom[0]) {
+                        this.ballsBottom[0].launch(this.paddleBottom, x, y);
+                        this.isAiBottom = false;
+                        this.lastActionBottom = performance.now();
+                    }
+                } else {
+                    if (this.ballsTop[0]) {
+                        this.ballsTop[0].launch(this.paddleTop, x, y);
+                        this.isAiTop = false;
+                        this.lastActionTop = performance.now();
+                    }
                 }
             }
         });
@@ -361,7 +379,7 @@ export class Game {
         if (primaryBall && !primaryBall.active) {
             const targetX = this.width / 2 + (Math.random() - 0.5) * 100;
             const targetY = this.isDemoMode ? this.height / 2 : ((side === 'top') ? paddle.y + 10 : paddle.y - 10);
-            primaryBall.launch(paddle.x, targetX, targetY);
+            primaryBall.launch(paddle, targetX, targetY);
             return;
         }
 
