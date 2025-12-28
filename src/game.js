@@ -380,7 +380,23 @@ export class Game {
 
             const targetBall = incomingBalls[0];
             const trackingSpeed = this.isDemoMode ? 1.0 : 0.15;
-            let targetX = paddle.x + (targetBall.x - paddle.x) * trackingSpeed;
+
+            let steerOffset = 0;
+            const horizontalRatio = Math.abs(targetBall.vx) / (Math.abs(targetBall.vy) || 0.1);
+            let finalTrackingSpeed = trackingSpeed;
+
+            // If ball is getting horizontal, hit it with the corners to steepen the angle
+            if (horizontalRatio > 2) {
+                // steerOffset = how much we push the paddle *away* from the ball's center
+                // to make the ball hit the counter-acting corner.
+                const intensity = Math.min(0.45, horizontalRatio * 0.1);
+                steerOffset = (targetBall.vx > 0) ? (paddle.width * intensity) : -(paddle.width * intensity);
+
+                // If it's very flat, prioritize this move with faster reaction
+                if (horizontalRatio > 4) finalTrackingSpeed = Math.max(0.4, trackingSpeed);
+            }
+
+            let targetX = paddle.x + ((targetBall.x + steerOffset) - paddle.x) * finalTrackingSpeed;
             paddle.moveTo(targetX);
         } else {
             const idleX = primaryBall ? primaryBall.x : this.width / 2;
