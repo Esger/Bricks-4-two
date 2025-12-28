@@ -161,9 +161,9 @@ export class Wall {
                 let t = null;
                 if (Math.random() < this.specialOnRepairChance) {
                     const rnd = Math.random();
-                    if (rnd < 0.3) t = 'extraBall';
-                    else if (rnd < 0.6) t = 'removeBall';
-                    else if (rnd < 0.8) t = 'enlargePaddle';
+                    if (rnd < 0.4) t = 'extraBall';
+                    else if (rnd < 0.5) t = 'removeBall';
+                    else if (rnd < 0.9) t = 'enlargePaddle';
                     else t = 'shrinkPaddle';
                 }
                 this.addBrickAt(cr, cc, t);
@@ -177,9 +177,9 @@ export class Wall {
                     let t = null;
                     if (Math.random() < this.specialOnRepairChance) {
                         const rnd = Math.random();
-                        if (rnd < 0.3) t = 'extraBall';
-                        else if (rnd < 0.6) t = 'removeBall';
-                        else if (rnd < 0.8) t = 'enlargePaddle';
+                        if (rnd < 0.4) t = 'extraBall';
+                        else if (rnd < 0.5) t = 'removeBall';
+                        else if (rnd < 0.9) t = 'enlargePaddle';
                         else t = 'shrinkPaddle';
                     }
                     this.addBrickAt(cr, cc, t);
