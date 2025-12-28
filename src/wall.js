@@ -230,16 +230,28 @@ export class Wall {
                 const sX = (b.width / 2) + ball.radius + 1, sY = (b.height / 2) + ball.radius + 1;
 
                 if (Math.abs(dx) <= sX && Math.abs(dy) <= sY) {
-                    const movingTowards = (ball.vy > 0 && dy < 0) || (ball.vy < 0 && dy > 0) ||
-                        (ball.vx > 0 && dx < 0) || (ball.vx < 0 && dx > 0);
+                    const towardsX = (ball.vx > 0 && dx < 0) || (ball.vx < 0 && dx > 0);
+                    const towardsY = (ball.vy > 0 && dy < 0) || (ball.vy < 0 && dy > 0);
+
+                    // If moving away from both axes, no collision possible (already resolving or past center)
+                    if (!towardsX && !towardsY) continue;
 
                     const overlapX = sX - Math.abs(dx), overlapY = sY - Math.abs(dy);
                     const penetration = Math.min(overlapX, overlapY);
 
-                    if (movingTowards && penetration < minPenetration) {
+                    // Resolve the bounce axis: choose smaller overlap but ONLY if moving towards it
+                    let chosenAxis = (overlapX < overlapY) ? 'x' : 'y';
+                    if (chosenAxis === 'x' && !towardsX) chosenAxis = 'y';
+                    if (chosenAxis === 'y' && !towardsY) chosenAxis = 'x';
+
+                    // Final validation for the chosen axis
+                    if (chosenAxis === 'x' && !towardsX) continue;
+                    if (chosenAxis === 'y' && !towardsY) continue;
+
+                    if (penetration < minPenetration) {
                         minPenetration = penetration;
                         best = b;
-                        bestPen = { dx, dy, overlapX, overlapY };
+                        bestPen = { dx, dy, overlapX, overlapY, axis: chosenAxis };
                     }
                 }
             }
@@ -250,7 +262,7 @@ export class Wall {
             this.pendingImpacts.set(key, ball.side);
             this.lastHitBrickType = best.type;
 
-            if (bestPen.overlapX < bestPen.overlapY) {
+            if (bestPen.axis === 'x') {
                 ball.vx *= -1;
                 const ejectX = (best.width / 2) + ball.radius + 2;
                 ball.x = best.canvasXPosition + (bestPen.dx > 0 ? ejectX : -ejectX);
