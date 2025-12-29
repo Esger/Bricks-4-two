@@ -32,6 +32,7 @@ export class Game {
         this.lastActionTop = 0;
         this.lastActionBottom = 0;
         this.winData = null;
+        this.aimingState = null; // { side, targetX, targetY, ball, paddle }
 
         // Initial launch on first tap on overlay
         this.onFirstTap = () => {
@@ -57,6 +58,12 @@ export class Game {
             const rect = this.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left);
             const y = (e.clientY - rect.top);
+
+            // Skip movement if this side is currently aiming
+            if (this.aimingState) {
+                const side = y >= this.height / 2 ? 'bottom' : 'top';
+                if (this.aimingState.side === side) return;
+            }
 
             // Upper half controls the top player; lower half controls the bottom player
             if (y >= this.height / 2) {
@@ -97,20 +104,42 @@ export class Game {
                 }
             }
 
-            // Upper half launches a top-side ball; lower half launches a bottom-side ball
-            if (y >= this.height / 2) {
-                if (this.ballsBottom[0]) {
-                    this.ballsBottom[0].launch(this.paddleBottom.x, x, y);
-                    this.isAiBottom = false;
-                    this.lastActionBottom = performance.now();
-                }
-            } else {
-                if (this.ballsTop[0]) {
-                    this.ballsTop[0].launch(this.paddleTop.x, x, y);
-                    this.isAiTop = false;
-                    this.lastActionTop = performance.now();
-                }
+            // START AIMING
+            const side = y >= this.height / 2 ? 'bottom' : 'top';
+            const ballArr = (side === 'top' ? this.ballsTop : this.ballsBottom);
+            const paddle = (side === 'top' ? this.paddleTop : this.paddleBottom);
+            const isAi = (side === 'top' ? this.isAiTop : this.isAiBottom);
+
+            const ball = ballArr[0];
+            if (ball && !ball.active && !isAi) {
+                // Lock paddle to current position and start aiming
+                paddle.moveTo(x);
+                this.aimingState = { side, x, y, ball, paddle };
             }
+        });
+
+        this.canvas.addEventListener('pointermove', (e) => {
+            if (!this.aimingState) return;
+            const rect = this.canvas.getBoundingClientRect();
+            this.aimingState.x = e.clientX - rect.left;
+            this.aimingState.y = e.clientY - rect.top;
+        });
+
+        this.canvas.addEventListener('pointerup', (e) => {
+            if (!this.aimingState) return;
+
+            const { ball, paddle, x, y, side } = this.aimingState;
+            ball.launch(paddle, x, y);
+
+            if (side === 'top') {
+                this.isAiTop = false;
+                this.lastActionTop = performance.now();
+            } else {
+                this.isAiBottom = false;
+                this.lastActionBottom = performance.now();
+            }
+
+            this.aimingState = null;
         });
     }
 
@@ -133,6 +162,7 @@ export class Game {
         this.updateScoreDisplay();
         this.overlay = document.getElementById('overlay');
         this.message = document.getElementById('message');
+        this.subMessage = document.querySelector('.sub-message');
         this.restartBtn = document.getElementById('restart-btn');
 
         // Initially hide restart button for the "Tap to Start" splash
@@ -187,6 +217,7 @@ export class Game {
         this.updateScoreDisplay();
 
         this.overlay.classList.add('hidden');
+        if (this.subMessage) this.subMessage.style.display = 'none';
         this.restartBtn.style.display = 'none';
 
         this.paddleTop.reset();
@@ -339,6 +370,7 @@ export class Game {
         this.message.style.boxShadow = `0 0 20px ${winnerColor}44`;
 
         this.overlay.classList.remove('hidden');
+        if (this.subMessage) this.subMessage.style.display = 'none';
         if (winner === 'top') {
             this.overlay.classList.add('rotate-180');
         } else {
@@ -361,7 +393,7 @@ export class Game {
         if (primaryBall && !primaryBall.active) {
             const targetX = this.width / 2 + (Math.random() - 0.5) * 100;
             const targetY = this.isDemoMode ? this.height / 2 : ((side === 'top') ? paddle.y + 10 : paddle.y - 10);
-            primaryBall.launch(paddle.x, targetX, targetY);
+            primaryBall.launch(paddle, targetX, targetY);
             return;
         }
 
@@ -439,5 +471,36 @@ export class Game {
         this.paddleBottom.draw(this.ctx);
         for (const b of this.ballsTop) b.draw(this.ctx);
         for (const b of this.ballsBottom) b.draw(this.ctx);
+
+        // Draw aiming arrow
+        if (this.aimingState) {
+            const { ball, x, y } = this.aimingState;
+            this.ctx.save();
+            this.ctx.beginPath();
+            this.ctx.moveTo(ball.x, ball.y);
+            this.ctx.lineTo(x, y);
+
+            this.ctx.strokeStyle = '#00ff88';
+            this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([5, 5]);
+            this.ctx.shadowBlur = 10;
+            this.ctx.shadowColor = '#00ff88';
+            this.ctx.globalAlpha = 0.6;
+            this.ctx.stroke();
+
+            // Arrow head
+            const angle = Math.atan2(y - ball.y, x - ball.x);
+            this.ctx.translate(x, y);
+            this.ctx.rotate(angle);
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, 0);
+            this.ctx.lineTo(-10, -5);
+            this.ctx.lineTo(-10, 5);
+            this.ctx.closePath();
+            this.ctx.fillStyle = '#00ff88';
+            this.ctx.fill();
+
+            this.ctx.restore();
+        }
     }
 }

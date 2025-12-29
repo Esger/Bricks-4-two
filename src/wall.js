@@ -161,9 +161,9 @@ export class Wall {
                 let t = null;
                 if (Math.random() < this.specialOnRepairChance) {
                     const rnd = Math.random();
-                    if (rnd < 0.3) t = 'extraBall';
-                    else if (rnd < 0.6) t = 'removeBall';
-                    else if (rnd < 0.8) t = 'enlargePaddle';
+                    if (rnd < 0.4) t = 'extraBall';
+                    else if (rnd < 0.5) t = 'removeBall';
+                    else if (rnd < 0.9) t = 'enlargePaddle';
                     else t = 'shrinkPaddle';
                 }
                 this.addBrickAt(cr, cc, t);
@@ -177,9 +177,9 @@ export class Wall {
                     let t = null;
                     if (Math.random() < this.specialOnRepairChance) {
                         const rnd = Math.random();
-                        if (rnd < 0.3) t = 'extraBall';
-                        else if (rnd < 0.6) t = 'removeBall';
-                        else if (rnd < 0.8) t = 'enlargePaddle';
+                        if (rnd < 0.4) t = 'extraBall';
+                        else if (rnd < 0.5) t = 'removeBall';
+                        else if (rnd < 0.9) t = 'enlargePaddle';
                         else t = 'shrinkPaddle';
                     }
                     this.addBrickAt(cr, cc, t);
@@ -215,14 +215,19 @@ export class Wall {
         // Instead of checking ALL bricks, we only check the ones immediately around the ball coordinate.
         const estRow = Math.round(ball.y / this.brickHeight);
 
-        // Search a 3x3 neighborhood around the estimated position
+        // Search a 5x5 neighborhood around the estimated position
+        // The x-position of a brick is (c * w) + shift + w/2, so the estimated column is (x - shift - w/2) / w
+        const xShift = (Math.abs(estRow) % 2 === 1) ? (this.brickWidth / 2) : 0;
+        const estCol = Math.round((ball.x - xShift - this.brickWidth / 2) / this.brickWidth);
+
         let best = null, minPenetration = Infinity, bestPen = null;
 
-        for (let r = estRow - 1; r <= estRow + 1; r++) {
-            const xShift = (Math.abs(r) % 2 === 1) ? (this.brickWidth / 2) : 0;
-            const estCol = Math.round((ball.x - xShift) / this.brickWidth);
+        // Use a slightly larger search range (2 rows/cols each way) to be absolutely safe near boundaries
+        for (let r = estRow - 2; r <= estRow + 2; r++) {
+            const rowShift = (Math.abs(r) % 2 === 1) ? (this.brickWidth / 2) : 0;
+            const centerCol = Math.round((ball.x - rowShift - this.brickWidth / 2) / this.brickWidth);
 
-            for (let c = estCol - 1; c <= estCol + 1; c++) {
+            for (let c = centerCol - 2; c <= centerCol + 2; c++) {
                 const b = this.activeBrickMap.get(`${c},${r}`);
                 if (!b) continue;
 
@@ -230,16 +235,28 @@ export class Wall {
                 const sX = (b.width / 2) + ball.radius + 1, sY = (b.height / 2) + ball.radius + 1;
 
                 if (Math.abs(dx) <= sX && Math.abs(dy) <= sY) {
-                    const movingTowards = (ball.vy > 0 && dy < 0) || (ball.vy < 0 && dy > 0) ||
-                        (ball.vx > 0 && dx < 0) || (ball.vx < 0 && dx > 0);
+                    const towardsX = (ball.vx > 0 && dx < 0) || (ball.vx < 0 && dx > 0);
+                    const towardsY = (ball.vy > 0 && dy < 0) || (ball.vy < 0 && dy > 0);
+
+                    // If moving away from both axes, no collision possible (already resolving or past center)
+                    if (!towardsX && !towardsY) continue;
 
                     const overlapX = sX - Math.abs(dx), overlapY = sY - Math.abs(dy);
                     const penetration = Math.min(overlapX, overlapY);
 
-                    if (movingTowards && penetration < minPenetration) {
+                    // Resolve the bounce axis: choose smaller overlap but ONLY if moving towards it
+                    let chosenAxis = (overlapX < overlapY) ? 'x' : 'y';
+                    if (chosenAxis === 'x' && !towardsX) chosenAxis = 'y';
+                    if (chosenAxis === 'y' && !towardsY) chosenAxis = 'x';
+
+                    // Final validation for the chosen axis
+                    if (chosenAxis === 'x' && !towardsX) continue;
+                    if (chosenAxis === 'y' && !towardsY) continue;
+
+                    if (penetration < minPenetration) {
                         minPenetration = penetration;
                         best = b;
-                        bestPen = { dx, dy, overlapX, overlapY };
+                        bestPen = { dx, dy, overlapX, overlapY, axis: chosenAxis };
                     }
                 }
             }
@@ -250,7 +267,7 @@ export class Wall {
             this.pendingImpacts.set(key, ball.side);
             this.lastHitBrickType = best.type;
 
-            if (bestPen.overlapX < bestPen.overlapY) {
+            if (bestPen.axis === 'x') {
                 ball.vx *= -1;
                 const ejectX = (best.width / 2) + ball.radius + 2;
                 ball.x = best.canvasXPosition + (bestPen.dx > 0 ? ejectX : -ejectX);
