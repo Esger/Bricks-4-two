@@ -149,6 +149,15 @@ html {
     letter-spacing: 2px;
 }
 
+.sub-message {
+    font-size: clamp(0.9rem, 2vw, 1.2rem);
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: -1.5rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
 .overlay:not(.hidden) .message {
     animation: pulse 2s infinite ease-in-out;
     transform: translateZ(0);

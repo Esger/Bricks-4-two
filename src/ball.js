@@ -23,24 +23,15 @@ export class Ball {
         this.active = false;
         this.vx = 0;
         this.vy = 0;
-
-        const gameWidth = this.canvas.clientWidth;
-        const gameHeight = this.canvas.clientHeight;
-
-        this.x = gameWidth / 2;
-        if (this.side === 'top') {
-            this.y = 60; // Just below top score area
-        } else {
-            this.y = gameHeight - 60; // Just above bottom score area
-        }
+        this.gameSpeed = 0;
     }
 
-    launch(paddleX, targetX, targetY) {
+    launch(paddle, targetX, targetY) {
         if (this.active) return;
 
         this.active = true;
-        const dx = targetX - paddleX;
-        const dy = targetY - (this.side === 'top' ? 20 : this.canvas.clientHeight - 20);
+        const dx = targetX - paddle.x;
+        const dy = targetY - paddle.y;
         const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
         const minSpeed = 2;
 
@@ -53,18 +44,29 @@ export class Ball {
         let nx = dx / dist;
         let ny = dy / dist;
 
-        if (Math.abs(ny) < Math.abs(nx)) {
-            ny = Math.sign(ny) * Math.abs(nx);
-            const nlen = Math.hypot(nx, ny) || 1;
-            nx /= nlen; ny /= nlen;
+        // Ensure we always launch with some vertical component towards the wall
+        const verticalMin = 0.4;
+        if (this.side === 'top') {
+            if (ny < verticalMin) ny = verticalMin;
+        } else {
+            if (ny > -verticalMin) ny = -verticalMin;
         }
+
+        const nlen = Math.hypot(nx, ny) || 1;
+        nx /= nlen; ny /= nlen;
 
         this.vx = nx * this.gameSpeed;
         this.vy = ny * this.gameSpeed;
     }
 
     update(game) {
-        if (!this.active) return;
+        if (!this.active) {
+            const paddle = (this.side === 'top') ? game.paddleTop : game.paddleBottom;
+            this.x = paddle.x;
+            const offset = (this.radius + paddle.height / 2 + 2);
+            this.y = (this.side === 'top') ? paddle.y + offset : paddle.y - offset;
+            return;
+        }
 
         // DYNAMIC SUB-STEPPING: Ensure no tunneling at high speeds
         // We move in small increments and re-check velocity each time
@@ -143,9 +145,20 @@ export class Ball {
                     return;
                 }
 
-                // Apply horizontal deflection
+                // Apply "curved" paddle deflection
+                // hitPos ranges from -1 (left edge) to 1 (right edge)
                 const hitPos = (this.x - paddle.x) / (paddle.width / 2);
-                this.vx += hitPos * 2;
+
+                // Add stronger deflection
+                this.vx += hitPos * 3;
+
+                // Enforce a minimum vertical velocity (at least 20% of total speed)
+                // This prevents the ball from going too horizontal
+                const minVy = this.gameSpeed * 0.2;
+                if (Math.abs(this.vy) < minVy) {
+                    this.vy = (this.vy > 0 ? 1 : -1) * minVy;
+                }
+
                 this._onBounce();
             }
         }
