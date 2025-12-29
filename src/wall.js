@@ -215,14 +215,19 @@ export class Wall {
         // Instead of checking ALL bricks, we only check the ones immediately around the ball coordinate.
         const estRow = Math.round(ball.y / this.brickHeight);
 
-        // Search a 3x3 neighborhood around the estimated position
+        // Search a 5x5 neighborhood around the estimated position
+        // The x-position of a brick is (c * w) + shift + w/2, so the estimated column is (x - shift - w/2) / w
+        const xShift = (Math.abs(estRow) % 2 === 1) ? (this.brickWidth / 2) : 0;
+        const estCol = Math.round((ball.x - xShift - this.brickWidth / 2) / this.brickWidth);
+
         let best = null, minPenetration = Infinity, bestPen = null;
 
-        for (let r = estRow - 1; r <= estRow + 1; r++) {
-            const xShift = (Math.abs(r) % 2 === 1) ? (this.brickWidth / 2) : 0;
-            const estCol = Math.round((ball.x - xShift) / this.brickWidth);
+        // Use a slightly larger search range (2 rows/cols each way) to be absolutely safe near boundaries
+        for (let r = estRow - 2; r <= estRow + 2; r++) {
+            const rowShift = (Math.abs(r) % 2 === 1) ? (this.brickWidth / 2) : 0;
+            const centerCol = Math.round((ball.x - rowShift - this.brickWidth / 2) / this.brickWidth);
 
-            for (let c = estCol - 1; c <= estCol + 1; c++) {
+            for (let c = centerCol - 2; c <= centerCol + 2; c++) {
                 const b = this.activeBrickMap.get(`${c},${r}`);
                 if (!b) continue;
 
