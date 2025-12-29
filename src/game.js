@@ -162,6 +162,7 @@ export class Game {
         this.updateScoreDisplay();
         this.overlay = document.getElementById('overlay');
         this.message = document.getElementById('message');
+        this.subMessage = document.querySelector('.sub-message');
         this.restartBtn = document.getElementById('restart-btn');
 
         // Initially hide restart button for the "Tap to Start" splash
@@ -216,6 +217,7 @@ export class Game {
         this.updateScoreDisplay();
 
         this.overlay.classList.add('hidden');
+        if (this.subMessage) this.subMessage.style.display = 'none';
         this.restartBtn.style.display = 'none';
 
         this.paddleTop.reset();
@@ -368,6 +370,7 @@ export class Game {
         this.message.style.boxShadow = `0 0 20px ${winnerColor}44`;
 
         this.overlay.classList.remove('hidden');
+        if (this.subMessage) this.subMessage.style.display = 'none';
         if (winner === 'top') {
             this.overlay.classList.add('rotate-180');
         } else {
